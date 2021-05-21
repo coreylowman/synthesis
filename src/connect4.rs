@@ -223,6 +223,14 @@ impl Env for Connect4 {
         }
     }
 
+    fn players() -> Vec<Self::PlayerId> {
+        vec![PlayerId::Red, PlayerId::Black]
+    }
+
+    fn max_num_actions() -> usize {
+        WIDTH
+    }
+
     fn player(&self) -> Self::PlayerId {
         self.player
     }
@@ -231,12 +239,12 @@ impl Env for Connect4 {
         self.winner().is_some() || (0..WIDTH).all(|col| !self.has_space(col))
     }
 
-    fn reward(&self, color: Self::PlayerId) -> f32 {
+    fn reward(&self, player_id: Self::PlayerId) -> f32 {
         assert!(self.is_over());
 
         match self.winner() {
             Some(winner) => {
-                if winner == color {
+                if winner == player_id {
                     1.0
                 } else {
                     -1.0

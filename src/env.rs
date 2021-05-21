@@ -3,13 +3,16 @@ use tch::Tensor;
 
 pub trait Env {
     type PlayerId: Eq + Clone + Copy + std::fmt::Debug;
-    type Action: Eq + Clone + Copy + std::fmt::Debug;
+    type Action: Eq + Clone + Copy + std::fmt::Debug + Into<usize>;
     type ActionIterator: Iterator<Item = Self::Action>;
+
+    fn players() -> Vec<Self::PlayerId>;
+    fn max_num_actions() -> usize;
 
     fn new() -> Self;
     fn player(&self) -> Self::PlayerId;
     fn is_over(&self) -> bool;
-    fn reward(&self, color: Self::PlayerId) -> f32;
+    fn reward(&self, player_id: Self::PlayerId) -> f32;
     fn iter_actions(&self) -> Self::ActionIterator;
     fn num_actions(&self) -> u8;
     fn get_random_action(&self, rng: &mut StdRng) -> Self::Action;

@@ -1,14 +1,13 @@
 use crate::env::Env;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 pub struct Node<E: Env + Clone> {
     pub parent: usize,
     pub env: E,
     pub terminal: bool,
     pub expanded: bool,
-    pub my_action: bool,
     pub actions: E::ActionIterator,
     pub children: Vec<(E::Action, usize)>,
     pub reward: f32,
@@ -16,16 +15,14 @@ pub struct Node<E: Env + Clone> {
 }
 
 impl<E: Env + Clone> Node<E> {
-    pub fn new_root(player_id: E::PlayerId) -> Self {
+    pub fn new_root() -> Self {
         let env = E::new();
-        let my_action = env.player() == player_id;
         let actions = env.iter_actions();
         Node {
             parent: 0,
             env,
             terminal: false,
             expanded: false,
-            my_action,
             actions,
             children: Vec::new(),
             num_visits: 0.0,
@@ -33,17 +30,15 @@ impl<E: Env + Clone> Node<E> {
         }
     }
 
-    pub fn new(parent_id: usize, node: &Self, action: &E::Action, player_id: E::PlayerId) -> Self {
+    pub fn new(parent_id: usize, node: &Self, action: &E::Action) -> Self {
         let mut env = node.env.clone();
         let is_over = env.step(action);
-        let my_action = env.player() == player_id;
         let actions = env.iter_actions();
         Node {
             parent: parent_id,
             env,
             terminal: is_over,
             expanded: is_over,
-            my_action,
             actions,
             children: Vec::new(),
             num_visits: 0.0,
@@ -53,19 +48,17 @@ impl<E: Env + Clone> Node<E> {
 }
 
 pub struct MCTS<E: Env + Clone> {
-    pub id: E::PlayerId,
     pub root: usize,
     pub nodes: Vec<Node<E>>,
     pub rng: StdRng, // note: this is about the same performance as SmallRng or any of the XorShiftRngs that got moved to the xorshift crate
 }
 
 impl<E: Env + Clone> MCTS<E> {
-    pub fn with_capacity(id: E::PlayerId, capacity: usize, seed: u64) -> Self {
+    pub fn with_capacity(capacity: usize, seed: u64) -> Self {
         let mut nodes = Vec::with_capacity(capacity);
-        let root = Node::new_root(id);
+        let root = Node::new_root();
         nodes.push(root);
         Self {
-            id,
             root: 0,
             nodes,
             rng: StdRng::seed_from_u64(seed),
@@ -89,7 +82,7 @@ impl<E: Env + Clone> MCTS<E> {
                 new_root
             }
             None => {
-                let child_node = Node::new(0, &self.nodes[self.root - self.root], action, self.id);
+                let child_node = Node::new(0, &self.nodes[self.root - self.root], action);
                 self.nodes.clear();
                 self.nodes.push(child_node);
                 0
@@ -97,6 +90,19 @@ impl<E: Env + Clone> MCTS<E> {
         };
 
         self.nodes[0].parent = self.root;
+    }
+
+    pub fn visit_counts(&self) -> Vec<(E::Action, f32)> {
+        let root = &self.nodes[self.root - self.root];
+
+        let mut visits = Vec::with_capacity(root.children.len());
+
+        for &(action, child_id) in root.children.iter() {
+            let child = &self.nodes[child_id - self.root];
+            visits.push((action, child.num_visits));
+        }
+
+        visits
     }
 
     pub fn best_action(&self) -> E::Action {
@@ -123,7 +129,7 @@ impl<E: Env + Clone> MCTS<E> {
             // assert!(node_id < self.nodes.len());
             let node = &mut self.nodes[node_id - self.root];
             if node.terminal {
-                let reward = node.env.reward(self.id);
+                let reward = -node.env.reward(node.env.player()); // NOTE: -reward because it should be prev player
                 self.backprop(node_id, reward, 1.0);
                 return;
             } else if node.expanded {
@@ -172,7 +178,7 @@ impl<E: Env + Clone> MCTS<E> {
         node.children.push((action, child_id));
 
         // create the child node... note we will be modifying num_visits and reward later, so mutable
-        let mut child_node = Node::new(node_id, &node, &action, self.id);
+        let mut child_node = Node::new(node_id, &node, &action);
 
         // rollout child to get initial reward
         let reward = self.rollout(child_node.env.clone());
@@ -187,15 +193,16 @@ impl<E: Env + Clone> MCTS<E> {
     fn rollout(&mut self, mut env: E) -> f32 {
         // assert!(node_id < self.nodes.len());
         // note: checking if env.is_over() before cloning doesn't make much difference
+        let root_player = env.player();
         let mut is_over = env.is_over();
         while !is_over {
             let action = env.get_random_action(&mut self.rng);
             is_over = env.step(&action);
         }
-        env.reward(self.id)
+        env.reward(root_player)
     }
 
-    fn backprop(&mut self, leaf_node_id: usize, reward: f32, num_visits: f32) {
+    fn backprop(&mut self, leaf_node_id: usize, mut reward: f32, num_visits: f32) {
         let mut node_id = leaf_node_id;
         loop {
             // assert!(node_id < self.nodes.len());
@@ -204,9 +211,9 @@ impl<E: Env + Clone> MCTS<E> {
 
             node.num_visits += num_visits;
 
-            // TODO multiply reward by -1 instead of this if every time
             // note this is reversed because its actually the previous node's action that this node's reward is associated with
-            node.reward += if !node.my_action { reward } else { -reward };
+            node.reward += reward;
+            reward *= -1.0;
 
             if node_id == self.root {
                 break;
@@ -216,12 +223,13 @@ impl<E: Env + Clone> MCTS<E> {
         }
     }
 
-    pub fn explore_n(&mut self, n: usize) -> (usize, u128) {
+    pub fn explore_n(&mut self, n: usize) -> Duration {
         let start = Instant::now();
         let start_n = self.nodes.len();
         for _ in 0..n {
             self.explore();
         }
-        (self.nodes.len() - start_n, start.elapsed().as_millis())
+        // assert_eq!(self.nodes.len() - start_n, n);
+        start.elapsed()
     }
 }

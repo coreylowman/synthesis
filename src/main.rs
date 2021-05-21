@@ -1,6 +1,7 @@
 mod connect4;
 mod env;
 mod mcts;
+mod runner;
 
 use connect4::{Connect4, PlayerId};
 use env::Env;
@@ -15,7 +16,7 @@ use rand::SeedableRng;
 fn main() {
     let mut game = Connect4::new();
     let mut rng = StdRng::seed_from_u64(1);
-    let mut mcts = MCTS::<Connect4>::with_capacity(PlayerId::Red, 2_500_000, 0);
+    let mut mcts = MCTS::<Connect4>::with_capacity(2_500_000, 0);
     game.print();
     loop {
         let action = if game.player() == PlayerId::Red {
@@ -29,7 +30,7 @@ fn main() {
         println!("Applying action {:?}", action);
         let is_over = game.step(&action);
         game.print();
-        game.state().print();
+        // game.state().print();
         if is_over {
             break;
         }
