@@ -29,6 +29,7 @@ fn main() {
         println!("Applying action {:?}", action);
         let is_over = game.step(&action);
         game.print();
+        game.state().print();
         if is_over {
             break;
         }
