@@ -210,10 +210,11 @@ impl Connect4 {
 }
 
 impl Env for Connect4 {
+    const MAX_NUM_ACTIONS: usize = WIDTH;
+    const NUM_PLAYERS: usize = 2;
+
     type PlayerId = PlayerId;
-
     type Action = usize;
-
     type ActionIterator = FreeColumns;
 
     fn new() -> Self {
@@ -221,14 +222,6 @@ impl Env for Connect4 {
             board: [[None; HEIGHT]; WIDTH],
             player: PlayerId::Red,
         }
-    }
-
-    fn players() -> Vec<Self::PlayerId> {
-        vec![PlayerId::Red, PlayerId::Black]
-    }
-
-    fn max_num_actions() -> usize {
-        WIDTH
     }
 
     fn player(&self) -> Self::PlayerId {

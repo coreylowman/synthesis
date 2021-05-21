@@ -6,8 +6,8 @@ pub trait Env {
     type Action: Eq + Clone + Copy + std::fmt::Debug + Into<usize>;
     type ActionIterator: Iterator<Item = Self::Action>;
 
-    fn players() -> Vec<Self::PlayerId>;
-    fn max_num_actions() -> usize;
+    const MAX_NUM_ACTIONS: usize;
+    const NUM_PLAYERS: usize;
 
     fn new() -> Self;
     fn player(&self) -> Self::PlayerId;

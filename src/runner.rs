@@ -1,6 +1,7 @@
 use crate::env::Env;
-use crate::mcts::MCTS;
-use tch::{IndexOp, Tensor};
+use crate::mcts::{Policy, MCTS};
+use crate::model::NNPolicy;
+use tch::{self, nn, IndexOp, Tensor};
 
 pub struct Timestep {
     state: Tensor,
@@ -17,8 +18,8 @@ pub struct RunConfig {
     device: tch::Device,
 }
 
-fn extract_policy<E: Env + Clone>(cfg: &RunConfig, mcts: &MCTS<E>) -> Tensor {
-    let mut policy = Tensor::zeros(&[E::max_num_actions() as i64], (cfg.kind, cfg.device));
+fn extract_policy<E: Env + Clone, P: Policy<E>>(cfg: &RunConfig, mcts: &MCTS<E, P>) -> Tensor {
+    let mut policy = Tensor::zeros(&[E::MAX_NUM_ACTIONS as i64], (cfg.kind, cfg.device));
     for (action, num_visits) in mcts.visit_counts() {
         let action_id: usize = action.into();
         let _ = policy
@@ -29,8 +30,11 @@ fn extract_policy<E: Env + Clone>(cfg: &RunConfig, mcts: &MCTS<E>) -> Tensor {
     policy
 }
 
-pub fn run_game<E: Env + Clone>(cfg: &RunConfig) -> Vec<Timestep> {
-    let mut mcts = MCTS::<E>::with_capacity(cfg.capacity, cfg.seed);
+pub fn run_game<E: Env + Clone, M: nn::Module>(
+    cfg: &RunConfig,
+    policy: NNPolicy<M>,
+) -> Vec<Timestep> {
+    let mut mcts = MCTS::<E, NNPolicy<M>>::with_capacity(cfg.capacity, cfg.seed, policy);
     let mut ts: Vec<Timestep> = Vec::new();
     let mut game = E::new();
     let root_player = game.player();
