@@ -18,8 +18,7 @@ pub struct Node<E: Env + Clone> {
 }
 
 impl<E: Env + Clone> Node<E> {
-    pub fn new_root() -> Self {
-        let env = E::new();
+    pub fn new_root(env: E, action_probs: Vec<f64>, value: f64) -> Self {
         let actions = env.iter_actions();
         Node {
             parent: 0,
@@ -28,15 +27,19 @@ impl<E: Env + Clone> Node<E> {
             expanded: false,
             actions,
             children: Vec::new(),
-            num_visits: 0.0,
-            cum_value: 0.0,
-            action_probs: Vec::new(),
+            num_visits: 1.0,
+            cum_value: value,
+            action_probs,
         }
     }
 
-    pub fn new(parent_id: usize, node: &Self, action: &E::Action) -> Self {
-        let mut env = node.env.clone();
-        let is_over = env.step(action);
+    pub fn new(
+        parent_id: usize,
+        env: E,
+        is_over: bool,
+        action_probs: Vec<f64>,
+        value: f64,
+    ) -> Self {
         let actions = env.iter_actions();
         Node {
             parent: parent_id,
@@ -45,9 +48,9 @@ impl<E: Env + Clone> Node<E> {
             expanded: is_over,
             actions,
             children: Vec::new(),
-            num_visits: 0.0,
-            cum_value: 0.0,
-            action_probs: Vec::new(),
+            num_visits: 1.0,
+            cum_value: value,
+            action_probs,
         }
     }
 }
@@ -66,7 +69,9 @@ pub struct MCTS<E: Env + Clone, P: Policy<E>> {
 impl<E: Env + Clone, P: Policy<E>> MCTS<E, P> {
     pub fn with_capacity(capacity: usize, seed: u64, policy: P) -> Self {
         let mut nodes = Vec::with_capacity(capacity);
-        let root = Node::new_root();
+        let env = E::new();
+        let (action_probs, value) = policy.eval(&env);
+        let root = Node::new_root(env, action_probs, value);
         nodes.push(root);
         Self {
             root: 0,
@@ -93,7 +98,10 @@ impl<E: Env + Clone, P: Policy<E>> MCTS<E, P> {
                 new_root
             }
             None => {
-                let child_node = Node::new(0, &self.nodes[self.root - self.root], action);
+                let mut env = self.nodes[self.root - self.root].env.clone();
+                let is_over = env.step(action);
+                let (action_probs, value) = self.policy.eval(&env);
+                let child_node = Node::new(0, env, is_over, action_probs, value);
                 self.nodes.clear();
                 self.nodes.push(child_node);
                 0
@@ -155,13 +163,12 @@ impl<E: Env + Clone, P: Policy<E>> MCTS<E, P> {
                         node.children.push((action, child_id));
 
                         // create the child node... note we will be modifying num_visits and reward later, so mutable
-                        let mut child = Node::new(node_id, &node, &action);
-                        let (pi, value) = self.policy.eval(&child.env);
-                        child.num_visits = 1.0;
-                        child.cum_value = value;
-                        child.action_probs = pi;
-                        self.backprop(node_id, value);
+                        let mut env = node.env.clone();
+                        let is_over = env.step(&action);
+                        let (action_probs, value) = self.policy.eval(&env);
+                        let child = Node::new(node_id, env, is_over, action_probs, value);
                         self.nodes.push(child);
+                        self.backprop(node_id, value);
                         return;
                     }
                     None => {
