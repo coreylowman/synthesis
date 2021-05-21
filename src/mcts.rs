@@ -84,7 +84,7 @@ impl<E: Env + Clone> MCTS<E> {
             .position(|(a, _)| a == action)
         {
             Some(action_index) => {
-                let (a, new_root) = self.nodes[self.root - self.root].children[action_index];
+                let (_a, new_root) = self.nodes[self.root - self.root].children[action_index];
                 drop(self.nodes.drain(0..new_root - self.root));
                 new_root
             }
@@ -165,33 +165,6 @@ impl<E: Env + Clone> MCTS<E> {
         best_child_id
     }
 
-    fn expand_all_children(&mut self, node_id: usize) -> (f32, f32) {
-        let mut node = &mut self.nodes[node_id - self.root];
-
-        // we are adding all children at once, so this node is about to be expanded
-        node.expanded = true;
-
-        let mut total_reward = 0.0;
-        let mut total_visits = 0.0;
-
-        // reserve max number of actions for children to reduce allocations
-        node.children.reserve_exact(node.env.num_actions() as usize);
-
-        // iterate through all the children!
-        for action in node.env.iter_actions() {
-            // create the child node and sample a reward from it
-            let child_node = self.expand_single_child(node_id, action);
-
-            // keep track of reward here so we can backprop 1 time for all the new children
-            total_reward += child_node.reward;
-            total_visits += 1.0;
-
-            self.nodes.push(child_node);
-        }
-
-        (total_reward, total_visits)
-    }
-
     fn expand_single_child(&mut self, node_id: usize, action: E::Action) -> Node<E> {
         let child_id = self.next_node_id();
 
@@ -241,15 +214,6 @@ impl<E: Env + Clone> MCTS<E> {
 
             node_id = node.parent;
         }
-    }
-
-    pub fn explore_for(&mut self, millis: u128) -> (usize, u128) {
-        let start = Instant::now();
-        let start_n = self.nodes.len();
-        while start.elapsed().as_millis() < millis {
-            self.explore();
-        }
-        (self.nodes.len() - start_n, start.elapsed().as_millis())
     }
 
     pub fn explore_n(&mut self, n: usize) -> (usize, u128) {
