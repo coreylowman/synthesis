@@ -1,6 +1,6 @@
 use crate::env::Env;
-use crate::rand::rngs::StdRng;
-use crate::rand::SeedableRng;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use std::time::Instant;
 
 pub struct Node<E: Env + Clone> {

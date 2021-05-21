@@ -1,4 +1,4 @@
-use crate::rand::rngs::StdRng;
+use rand::rngs::StdRng;
 
 pub trait Env {
     type PlayerId: Eq + Clone + Copy + std::fmt::Debug;

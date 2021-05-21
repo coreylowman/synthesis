@@ -1,14 +1,12 @@
-extern crate rand;
-
 mod connect4;
 mod env;
 mod mcts;
 
-use crate::rand::rngs::StdRng;
-use crate::rand::SeedableRng;
 use connect4::{Connect4, PlayerId};
 use env::Env;
 use mcts::MCTS;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 // use tch::nn::{Adam, ModuleT, OptimizerConfig, VarStore};
 // use tch::vision::dataset::Dataset;
 // use tch::TrainableCModule;

@@ -1,6 +1,6 @@
 use crate::env::Env;
-use crate::rand::prelude::SliceRandom;
-use crate::rand::rngs::StdRng;
+use rand::prelude::SliceRandom;
+use rand::rngs::StdRng;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PlayerId {
