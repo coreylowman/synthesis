@@ -223,16 +223,21 @@ impl Env for Connect4 {
     }
 
     fn is_over(&self) -> bool {
-        self.winner().is_some()
+        self.winner().is_some() || (0..WIDTH).all(|col| !self.has_space(col))
     }
 
     fn reward(&self, color: Self::PlayerId) -> f32 {
         assert!(self.is_over());
 
-        if color == self.winner().unwrap() {
-            1.0
-        } else {
-            -1.0
+        match self.winner() {
+            Some(winner) => {
+                if winner == color {
+                    1.0
+                } else {
+                    -1.0
+                }
+            }
+            None => 0.0,
         }
     }
 
