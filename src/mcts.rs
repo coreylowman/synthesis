@@ -160,6 +160,14 @@ impl<E: Env + Clone, P: Policy<E>> MCTS<E, P> {
                     }
                     None => {
                         node.expanded = true;
+                        let mut valids = vec![0.0; E::MAX_NUM_ACTIONS];
+                        for &(action, _) in node.children.iter() {
+                            valids[action.into()] = 1.0;
+                        }
+                        let total: f64 = valids.iter().sum();
+                        for p in node.action_probs.iter_mut() {
+                            *p /= total;
+                        }
                         node_id = self.select_best_child(node_id);
                     }
                 }
