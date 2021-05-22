@@ -24,7 +24,7 @@ impl ConvNet {
             conv_3: nn::conv2d(vs / "conv_3", 32, 32, 3, cfg),
             fc_1: nn::linear(vs / "fc_1", 32 * 6 * 7, 256, Default::default()),
             fc_2: nn::linear(vs / "fc_2", 256, 256, Default::default()),
-            p: nn::linear(vs / "p", 256, 6, Default::default()),
+            p: nn::linear(vs / "p", 256, 7, Default::default()),
             v: nn::linear(vs / "v", 256, 1, Default::default()),
         }
     }
