@@ -13,7 +13,7 @@ pub struct ConvNet {
 }
 
 impl ConvNet {
-    pub fn new(vs: &nn::Path) -> Self {
+    pub fn new<E: Env>(vs: &nn::Path) -> Self {
         let cfg = nn::ConvConfig {
             padding: 1,
             ..Default::default()
@@ -24,7 +24,7 @@ impl ConvNet {
             conv_3: nn::conv2d(vs / "conv_3", 32, 32, 3, cfg),
             fc_1: nn::linear(vs / "fc_1", 32 * 6 * 7, 256, Default::default()),
             fc_2: nn::linear(vs / "fc_2", 256, 256, Default::default()),
-            p: nn::linear(vs / "p", 256, 7, Default::default()),
+            p: nn::linear(vs / "p", 256, E::MAX_NUM_ACTIONS as i64, Default::default()),
             v: nn::linear(vs / "v", 256, 1, Default::default()),
         }
     }

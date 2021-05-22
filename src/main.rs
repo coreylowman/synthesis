@@ -17,13 +17,15 @@ use tch::TrainableCModule;
 use tch::{nn, Device};
 
 fn main() {
-    let mut vs = VarStore::new(Device::Cpu);
-    let mut policy = ConvNet::new(&vs.root());
+    let seed = 0;
+    tch::manual_seed(seed);
+    let mut rng = StdRng::seed_from_u64(seed as u64);
 
     let mut game = Connect4::new();
-    let mut rng = StdRng::seed_from_u64(1);
+    let mut vs = VarStore::new(Device::Cpu);
+    let mut policy = ConvNet::new::<Connect4>(&vs.root());
+
     let mut mcts = MCTS::<Connect4, ConvNet>::with_capacity(2_500_000, 0, policy);
-    mcts.add_root();
 
     game.print();
 

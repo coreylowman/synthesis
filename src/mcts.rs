@@ -53,19 +53,19 @@ pub struct MCTS<E: Env + Clone, P: Policy<E>> {
 
 impl<E: Env + Clone, P: Policy<E>> MCTS<E, P> {
     pub fn with_capacity(capacity: usize, seed: u64, policy: P) -> Self {
+        let env = E::new();
+        let (action_probs, value) = policy.eval(&env);
+        let root = Node::new(0, env, false, action_probs, value);
+
+        let mut nodes = Vec::with_capacity(capacity);
+        nodes.push(root);
+
         Self {
             root: 0,
-            nodes: Vec::with_capacity(capacity),
+            nodes,
             rng: StdRng::seed_from_u64(seed),
             policy,
         }
-    }
-
-    pub fn add_root(&mut self) {
-        let env = E::new();
-        let (action_probs, value) = self.policy.eval(&env);
-        let root = Node::new(0, env, false, action_probs, value);
-        self.nodes.push(root);
     }
 
     fn next_node_id(&self) -> usize {
