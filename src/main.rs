@@ -8,7 +8,7 @@ use crate::connect4::{Connect4, PlayerId};
 use crate::env::Env;
 use crate::mcts::MCTS;
 use crate::model::ConvNet;
-use crate::runner::{run_game, RunConfig};
+use crate::runner::{gather_experience, run_game, RunConfig};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std::default::Default;
@@ -34,32 +34,9 @@ fn main() {
         kind: tch::Kind::Float,
         device: tch::Device::Cpu,
     };
-    let ts = run_game::<Connect4, ConvNet>(&cfg, policy);
+    let ts = gather_experience::<Connect4, ConvNet>(&cfg, &policy, 1_000);
 
     for (i, t) in ts.iter().enumerate() {
         println!("t {} {:?}", i, t);
     }
-
-    // let mut rng = StdRng::seed_from_u64(seed);
-    // let mut game = Connect4::new();
-    // let mut mcts = MCTS::<Connect4, ConvNet>::with_capacity(2_500_000, 0, policy);
-    // game.print();
-
-    // loop {
-    //     let action = if game.player() == PlayerId::Red {
-    //         mcts.explore_n(1500);
-    //         mcts.best_action()
-    //     } else {
-    //         game.get_random_action(&mut rng)
-    //     };
-    //     mcts.step_action(&action);
-    //     println!("-----");
-    //     println!("Applying action {:?}", action);
-    //     let is_over = game.step(&action);
-    //     game.print();
-    //     // game.state().print();
-    //     if is_over {
-    //         break;
-    //     }
-    // }
 }

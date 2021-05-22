@@ -44,15 +44,15 @@ pub trait Policy<E: Env> {
     fn eval(&self, env: &E) -> (Vec<f64>, f64);
 }
 
-pub struct MCTS<E: Env + Clone, P: Policy<E>> {
+pub struct MCTS<'a, E: Env + Clone, P: Policy<E>> {
     pub root: usize,
     pub nodes: Vec<Node<E>>,
     pub rng: StdRng, // note: this is about the same performance as SmallRng or any of the XorShiftRngs that got moved to the xorshift crate
-    pub policy: P,
+    pub policy: &'a P,
 }
 
-impl<E: Env + Clone, P: Policy<E>> MCTS<E, P> {
-    pub fn with_capacity(capacity: usize, seed: u64, policy: P) -> Self {
+impl<'a, E: Env + Clone, P: Policy<E>> MCTS<'a, E, P> {
+    pub fn with_capacity(capacity: usize, seed: u64, policy: &'a P) -> Self {
         let env = E::new();
         let (action_probs, value) = policy.eval(&env);
         let root = Node::new(0, env, false, action_probs, value);
@@ -158,7 +158,7 @@ impl<E: Env + Clone, P: Policy<E>> MCTS<E, P> {
                         let (action_probs, value) = self.policy.eval(&env);
                         let child = Node::new(node_id, env, is_over, action_probs, value);
                         self.nodes.push(child);
-                        self.backprop(node_id, value);
+                        self.backprop(node_id, -value);
                         return;
                     }
                     None => {

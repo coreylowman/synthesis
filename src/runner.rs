@@ -1,6 +1,6 @@
 use crate::env::Env;
 use crate::mcts::{Policy, MCTS};
-use tch::{self, nn, IndexOp, Tensor};
+use tch::{Device, IndexOp, Kind, Tensor};
 
 #[derive(Debug)]
 pub struct Timestep {
@@ -15,8 +15,8 @@ pub struct RunConfig {
     pub capacity: usize,
     pub num_explores: usize,
     pub temperature: f64,
-    pub kind: tch::Kind,
-    pub device: tch::Device,
+    pub kind: Kind,
+    pub device: Device,
 }
 
 fn extract_policy<E: Env + Clone, P: Policy<E>>(cfg: &RunConfig, mcts: &MCTS<E, P>) -> Tensor {
@@ -31,11 +31,10 @@ fn extract_policy<E: Env + Clone, P: Policy<E>>(cfg: &RunConfig, mcts: &MCTS<E, 
     policy
 }
 
-pub fn run_game<E: Env + Clone, P: Policy<E>>(cfg: &RunConfig, policy: P) -> Vec<Timestep> {
+pub fn run_game<E: Env + Clone, P: Policy<E>>(cfg: &RunConfig, policy: &P) -> Vec<Timestep> {
     let mut mcts = MCTS::<E, P>::with_capacity(cfg.capacity, cfg.seed, policy);
     let mut ts: Vec<Timestep> = Vec::new();
     let mut game = E::new();
-    let root_player = game.player();
     let mut is_over = false;
     while !is_over {
         mcts.explore_n(cfg.num_explores);
@@ -50,10 +49,10 @@ pub fn run_game<E: Env + Clone, P: Policy<E>>(cfg: &RunConfig, policy: P) -> Vec
         let action = mcts.best_action();
         mcts.step_action(&action);
 
-        println!("-----");
-        println!("Applying action {:?}", action);
+        // println!("-----");
+        // println!("Applying action {:?}", action);
         is_over = game.step(&action);
-        game.print();
+        // game.print();
     }
 
     let mut r = -game.reward(game.player());
@@ -62,5 +61,17 @@ pub fn run_game<E: Env + Clone, P: Policy<E>>(cfg: &RunConfig, policy: P) -> Vec
         r *= -1.0;
     }
 
+    ts
+}
+
+pub fn gather_experience<E: Env + Clone, P: Policy<E>>(
+    cfg: &RunConfig,
+    policy: &P,
+    n: usize,
+) -> Vec<Timestep> {
+    let mut ts = Vec::with_capacity(n);
+    while ts.len() < n {
+        ts.extend(run_game(cfg, policy));
+    }
     ts
 }
