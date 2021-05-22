@@ -1,6 +1,4 @@
 use crate::env::Env;
-use rand::rngs::StdRng;
-use rand::SeedableRng;
 use std::time::{Duration, Instant};
 
 const C_PUCT: f64 = 1.0;
@@ -47,12 +45,11 @@ pub trait Policy<E: Env> {
 pub struct MCTS<'a, E: Env + Clone, P: Policy<E>> {
     pub root: usize,
     pub nodes: Vec<Node<E>>,
-    pub rng: StdRng, // note: this is about the same performance as SmallRng or any of the XorShiftRngs that got moved to the xorshift crate
     pub policy: &'a P,
 }
 
 impl<'a, E: Env + Clone, P: Policy<E>> MCTS<'a, E, P> {
-    pub fn with_capacity(capacity: usize, seed: u64, policy: &'a P) -> Self {
+    pub fn with_capacity(capacity: usize, policy: &'a P) -> Self {
         let env = E::new();
         let (action_probs, value) = policy.eval(&env);
         let root = Node::new(0, env, false, action_probs, value);
@@ -63,7 +60,6 @@ impl<'a, E: Env + Clone, P: Policy<E>> MCTS<'a, E, P> {
         Self {
             root: 0,
             nodes,
-            rng: StdRng::seed_from_u64(seed),
             policy,
         }
     }

@@ -3,6 +3,7 @@ use crate::mcts::Policy;
 use tch::{self, nn, Tensor};
 
 pub struct ConvNet {
+    device: tch::Device,
     conv_1: nn::Conv2D,
     conv_2: nn::Conv2D,
     conv_3: nn::Conv2D,
@@ -13,19 +14,26 @@ pub struct ConvNet {
 }
 
 impl ConvNet {
-    pub fn new<E: Env>(vs: &nn::Path) -> Self {
+    pub fn new<E: Env>(vs: &nn::VarStore) -> Self {
         let cfg = nn::ConvConfig {
             padding: 1,
             ..Default::default()
         };
+        let root = &vs.root();
         Self {
-            conv_1: nn::conv2d(vs / "conv_1", 2, 32, 3, cfg),
-            conv_2: nn::conv2d(vs / "conv_2", 32, 32, 3, cfg),
-            conv_3: nn::conv2d(vs / "conv_3", 32, 32, 3, cfg),
-            fc_1: nn::linear(vs / "fc_1", 32 * 6 * 7, 256, Default::default()),
-            fc_2: nn::linear(vs / "fc_2", 256, 256, Default::default()),
-            p: nn::linear(vs / "p", 256, E::MAX_NUM_ACTIONS as i64, Default::default()),
-            v: nn::linear(vs / "v", 256, 1, Default::default()),
+            device: vs.device(),
+            conv_1: nn::conv2d(root / "conv_1", 2, 32, 3, cfg),
+            conv_2: nn::conv2d(root / "conv_2", 32, 32, 3, cfg),
+            conv_3: nn::conv2d(root / "conv_3", 32, 32, 3, cfg),
+            fc_1: nn::linear(root / "fc_1", 32 * 6 * 7, 256, Default::default()),
+            fc_2: nn::linear(root / "fc_2", 256, 256, Default::default()),
+            p: nn::linear(
+                root / "p",
+                256,
+                E::MAX_NUM_ACTIONS as i64,
+                Default::default(),
+            ),
+            v: nn::linear(root / "v", 256, 1, Default::default()),
         }
     }
 
@@ -50,7 +58,7 @@ impl ConvNet {
 
 impl<E: Env> Policy<E> for ConvNet {
     fn eval(&self, env: &E) -> (Vec<f64>, f64) {
-        let xs = env.state().unsqueeze(0);
+        let xs = env.state(self.device).unsqueeze(0);
         let (policy, value) = tch::no_grad(|| self.forward(&xs));
         let policy = Vec::<f64>::from(&policy.squeeze1(0));
         let value = value.double_value(&[]);
