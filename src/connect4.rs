@@ -181,32 +181,6 @@ impl Connect4 {
         }
         false
     }
-
-    pub fn print(&self) {
-        if self.is_over() {
-            println!("{:?} won", self.winner());
-        } else {
-            println!("{:?} to play", self.player);
-            println!(
-                "Available Actions: {:?}",
-                self.iter_actions().collect::<Vec<usize>>()
-            );
-        }
-
-        for row in (0..HEIGHT).rev() {
-            for col in 0..WIDTH {
-                print!(
-                    "{} ",
-                    match self.at(row, col) {
-                        Some(PlayerId::Black) => "B",
-                        Some(PlayerId::Red) => "r",
-                        None => ".",
-                    }
-                );
-            }
-            println!();
-        }
-    }
 }
 
 impl Env for Connect4 {
@@ -290,5 +264,31 @@ impl Env for Connect4 {
             p = p.next();
         }
         t
+    }
+
+    fn print(&self) {
+        if self.is_over() {
+            println!("{:?} won", self.winner());
+        } else {
+            println!("{:?} to play", self.player);
+            println!(
+                "Available Actions: {:?}",
+                self.iter_actions().collect::<Vec<usize>>()
+            );
+        }
+
+        for row in (0..HEIGHT).rev() {
+            for col in 0..WIDTH {
+                print!(
+                    "{} ",
+                    match self.at(row, col) {
+                        Some(PlayerId::Black) => "B",
+                        Some(PlayerId::Red) => "r",
+                        None => ".",
+                    }
+                );
+            }
+            println!();
+        }
     }
 }

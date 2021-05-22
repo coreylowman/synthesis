@@ -2,19 +2,21 @@ use crate::env::Env;
 use crate::mcts::{Policy, MCTS};
 use tch::{self, nn, IndexOp, Tensor};
 
+#[derive(Debug)]
 pub struct Timestep {
-    state: Tensor,
-    policy: Tensor,
-    value: f32,
+    pub state: Tensor,
+    pub policy: Tensor,
+    pub value: f32,
 }
 
+#[derive(Debug)]
 pub struct RunConfig {
-    seed: u64,
-    capacity: usize,
-    num_explores: usize,
-    temperature: f64,
-    kind: tch::Kind,
-    device: tch::Device,
+    pub seed: u64,
+    pub capacity: usize,
+    pub num_explores: usize,
+    pub temperature: f64,
+    pub kind: tch::Kind,
+    pub device: tch::Device,
 }
 
 fn extract_policy<E: Env + Clone, P: Policy<E>>(cfg: &RunConfig, mcts: &MCTS<E, P>) -> Tensor {
@@ -46,10 +48,15 @@ pub fn run_game<E: Env + Clone, P: Policy<E>>(cfg: &RunConfig, policy: P) -> Vec
         });
 
         let action = mcts.best_action();
+        mcts.step_action(&action);
+
+        println!("-----");
+        println!("Applying action {:?}", action);
         is_over = game.step(&action);
+        game.print();
     }
 
-    let mut r = game.reward(root_player); // TODO should this be -reward?
+    let mut r = -game.reward(game.player());
     for t in ts.iter_mut().rev() {
         t.value = r;
         r *= -1.0;

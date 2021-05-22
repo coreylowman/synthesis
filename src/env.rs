@@ -18,4 +18,5 @@ pub trait Env {
     fn get_random_action(&self, rng: &mut StdRng) -> Self::Action;
     fn step(&mut self, action: &Self::Action) -> bool;
     fn state(&self) -> Tensor;
+    fn print(&self);
 }

@@ -114,19 +114,22 @@ impl<E: Env + Clone, P: Policy<E>> MCTS<E, P> {
     pub fn best_action(&self) -> E::Action {
         let root = &self.nodes[self.root - self.root];
 
-        let mut best_action_ind = 0;
+        let mut best_action = None;
         let mut best_value = -std::f64::INFINITY;
 
-        for (i, &(_, child_id)) in root.children.iter().enumerate() {
+        assert!(root.children.len() > 0);
+
+        for &(action, child_id) in root.children.iter() {
             let child = &self.nodes[child_id - self.root];
             let value = child.num_visits;
             if value > best_value {
                 best_value = value;
-                best_action_ind = i;
+                best_action = Some(action);
             }
         }
+        assert!(best_action.is_some());
 
-        root.children[best_action_ind].0
+        best_action.unwrap()
     }
 
     fn explore(&mut self) {
