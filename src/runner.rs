@@ -1,6 +1,5 @@
 use crate::env::Env;
 use crate::mcts::{Policy, MCTS};
-use crate::model::NNPolicy;
 use tch::{self, nn, IndexOp, Tensor};
 
 pub struct Timestep {
@@ -30,11 +29,8 @@ fn extract_policy<E: Env + Clone, P: Policy<E>>(cfg: &RunConfig, mcts: &MCTS<E, 
     policy
 }
 
-pub fn run_game<E: Env + Clone, M: nn::Module>(
-    cfg: &RunConfig,
-    policy: NNPolicy<M>,
-) -> Vec<Timestep> {
-    let mut mcts = MCTS::<E, NNPolicy<M>>::with_capacity(cfg.capacity, cfg.seed, policy);
+pub fn run_game<E: Env + Clone, P: Policy<E>>(cfg: &RunConfig, policy: P) -> Vec<Timestep> {
+    let mut mcts = MCTS::<E, P>::with_capacity(cfg.capacity, cfg.seed, policy);
     let mut ts: Vec<Timestep> = Vec::new();
     let mut game = E::new();
     let root_player = game.player();

@@ -18,21 +18,6 @@ pub struct Node<E: Env + Clone> {
 }
 
 impl<E: Env + Clone> Node<E> {
-    pub fn new_root(env: E, action_probs: Vec<f64>, value: f64) -> Self {
-        let actions = env.iter_actions();
-        Node {
-            parent: 0,
-            env,
-            terminal: false,
-            expanded: false,
-            actions,
-            children: Vec::new(),
-            num_visits: 1.0,
-            cum_value: value,
-            action_probs,
-        }
-    }
-
     pub fn new(
         parent_id: usize,
         env: E,
@@ -68,17 +53,19 @@ pub struct MCTS<E: Env + Clone, P: Policy<E>> {
 
 impl<E: Env + Clone, P: Policy<E>> MCTS<E, P> {
     pub fn with_capacity(capacity: usize, seed: u64, policy: P) -> Self {
-        let mut nodes = Vec::with_capacity(capacity);
-        let env = E::new();
-        let (action_probs, value) = policy.eval(&env);
-        let root = Node::new_root(env, action_probs, value);
-        nodes.push(root);
         Self {
             root: 0,
-            nodes,
+            nodes: Vec::with_capacity(capacity),
             rng: StdRng::seed_from_u64(seed),
             policy,
         }
+    }
+
+    pub fn add_root(&mut self) {
+        let env = E::new();
+        let (action_probs, value) = self.policy.eval(&env);
+        let root = Node::new(0, env, false, action_probs, value);
+        self.nodes.push(root);
     }
 
     fn next_node_id(&self) -> usize {
