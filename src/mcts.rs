@@ -218,7 +218,6 @@ impl<'a, E: Env + Clone, P: Policy<E>> MCTS<'a, E, P> {
 
     pub fn explore_n(&mut self, n: usize) -> Duration {
         let start = Instant::now();
-        let start_n = self.nodes.len();
         for _ in 0..n {
             self.explore();
         }

@@ -20,18 +20,6 @@ pub struct RunConfig {
     pub sample_action: bool,
 }
 
-fn extract_policy<E: Env + Clone, P: Policy<E>>(cfg: &RunConfig, mcts: &MCTS<E, P>) -> Tensor {
-    let mut policy = Tensor::zeros(&[E::MAX_NUM_ACTIONS as i64], (cfg.kind, cfg.device));
-    for (action, num_visits) in mcts.visit_counts() {
-        let action_id: usize = action.into();
-        let _ = policy
-            .i(action_id as i64)
-            .fill_((num_visits as f64).powf(1.0 / cfg.temperature));
-    }
-    policy /= policy.sum(cfg.kind);
-    policy
-}
-
 pub fn run_game<E: Env + Clone, P: Policy<E>, R: Rng>(
     cfg: &RunConfig,
     policy: &P,
