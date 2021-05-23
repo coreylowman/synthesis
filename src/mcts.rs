@@ -1,7 +1,7 @@
 use crate::env::Env;
 use std::time::{Duration, Instant};
 
-const C_PUCT: f64 = 1.0;
+const C_PUCT: f32 = 1.0;
 
 pub struct Node<E: Env + Clone> {
     pub parent: usize,
@@ -10,9 +10,9 @@ pub struct Node<E: Env + Clone> {
     pub expanded: bool,
     pub actions: E::ActionIterator,
     pub children: Vec<(E::Action, usize)>,
-    pub cum_value: f64,
-    pub num_visits: f64,
-    pub action_probs: Vec<f64>,
+    pub cum_value: f32,
+    pub num_visits: f32,
+    pub action_probs: Vec<f32>,
 }
 
 impl<E: Env + Clone> Node<E> {
@@ -20,8 +20,8 @@ impl<E: Env + Clone> Node<E> {
         parent_id: usize,
         env: E,
         is_over: bool,
-        action_probs: Vec<f64>,
-        value: f64,
+        action_probs: Vec<f32>,
+        value: f32,
     ) -> Self {
         let actions = env.iter_actions();
         Node {
@@ -39,7 +39,7 @@ impl<E: Env + Clone> Node<E> {
 }
 
 pub trait Policy<E: Env> {
-    fn eval(&self, env: &E) -> (Vec<f64>, f64);
+    fn eval(&self, env: &E) -> (Vec<f32>, f32);
 }
 
 pub struct MCTS<'a, E: Env + Clone, P: Policy<E>> {
@@ -94,7 +94,7 @@ impl<'a, E: Env + Clone, P: Policy<E>> MCTS<'a, E, P> {
         self.nodes[0].parent = self.root;
     }
 
-    pub fn visit_counts(&self) -> Vec<(E::Action, f64)> {
+    pub fn visit_counts(&self) -> Vec<(E::Action, f32)> {
         let root = &self.nodes[self.root - self.root];
 
         let mut visits = Vec::with_capacity(root.children.len());
@@ -111,7 +111,7 @@ impl<'a, E: Env + Clone, P: Policy<E>> MCTS<'a, E, P> {
         let root = &self.nodes[self.root - self.root];
 
         let mut best_action = None;
-        let mut best_value = -std::f64::INFINITY;
+        let mut best_value = -std::f32::INFINITY;
 
         assert!(root.children.len() > 0);
 
@@ -163,7 +163,7 @@ impl<'a, E: Env + Clone, P: Policy<E>> MCTS<'a, E, P> {
                         for &(action, _) in node.children.iter() {
                             valids[action.into()] = 1.0;
                         }
-                        let total: f64 = valids.iter().sum();
+                        let total: f32 = valids.iter().sum();
                         for p in node.action_probs.iter_mut() {
                             *p /= total;
                         }
@@ -181,7 +181,7 @@ impl<'a, E: Env + Clone, P: Policy<E>> MCTS<'a, E, P> {
         let visits = node.num_visits.sqrt();
 
         let mut best_child_id = self.root;
-        let mut best_value = -std::f64::INFINITY;
+        let mut best_value = -std::f32::INFINITY;
         for &(action, child_id) in &node.children {
             let child = &self.nodes[child_id - self.root];
             let value = child.cum_value / child.num_visits
@@ -195,7 +195,7 @@ impl<'a, E: Env + Clone, P: Policy<E>> MCTS<'a, E, P> {
         best_child_id
     }
 
-    fn backprop(&mut self, leaf_node_id: usize, mut value: f64) {
+    fn backprop(&mut self, leaf_node_id: usize, mut value: f32) {
         let mut node_id = leaf_node_id;
         loop {
             // assert!(node_id < self.nodes.len());

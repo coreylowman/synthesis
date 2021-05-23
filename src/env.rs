@@ -1,5 +1,5 @@
 use rand::rngs::StdRng;
-use tch::{Device, Tensor};
+use tch::{Device, Kind, Tensor};
 
 pub trait Env {
     type PlayerId: Eq + Clone + Copy + std::fmt::Debug;
@@ -17,6 +17,6 @@ pub trait Env {
     fn num_actions(&self) -> u8;
     fn get_random_action(&self, rng: &mut StdRng) -> Self::Action;
     fn step(&mut self, action: &Self::Action) -> bool;
-    fn state(&self, device: Device) -> Tensor;
+    fn state(&self, kind: Kind, device: Device) -> Tensor;
     fn print(&self);
 }

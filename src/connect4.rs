@@ -245,11 +245,8 @@ impl Env for Connect4 {
         self.is_over()
     }
 
-    fn state(&self, device: tch::Device) -> Tensor {
-        let mut t = Tensor::zeros(
-            &[2, HEIGHT as i64, WIDTH as i64],
-            (tch::Kind::Float, device),
-        );
+    fn state(&self, kind: tch::Kind, device: tch::Device) -> Tensor {
+        let mut t = Tensor::zeros(&[2, HEIGHT as i64, WIDTH as i64], (kind, device));
         let mut p = self.player();
         for i in 0..2i64 {
             for col in 0..WIDTH {
