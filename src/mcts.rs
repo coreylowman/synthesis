@@ -94,17 +94,19 @@ impl<'a, E: Env + Clone, P: Policy<E>> MCTS<'a, E, P> {
         self.nodes[0].parent = self.root;
     }
 
-    pub fn visit_counts(&self) -> Vec<(E::Action, f32)> {
+    pub fn visit_counts(&self) -> (Vec<E::Action>, Vec<f32>) {
         let root = &self.nodes[self.root - self.root];
 
+        let mut actions = Vec::with_capacity(root.children.len());
         let mut visits = Vec::with_capacity(root.children.len());
 
         for &(action, child_id) in root.children.iter() {
             let child = &self.nodes[child_id - self.root];
-            visits.push((action, child.num_visits));
+            actions.push(action);
+            visits.push(child.num_visits);
         }
 
-        visits
+        (actions, visits)
     }
 
     pub fn best_action(&self) -> E::Action {

@@ -50,44 +50,42 @@ impl Iterator for BatchRandSampler {
             return None;
         }
 
-        let batch_inds = self.inds.i(self.index..next_index).to(self.device);
+        let batch_inds = self
+            .inds
+            .narrow(0, self.index as i64, (next_index - self.index) as i64);
         self.index = next_index;
 
         let item = (
-            self.x.index_select(0, &batch_inds).to(self.device),
-            self.y.index_select(0, &batch_inds).to(self.device),
-            self.z.index_select(0, &batch_inds).to(self.device),
+            self.x.index_select(0, &batch_inds),
+            self.y.index_select(0, &batch_inds),
+            self.z.index_select(0, &batch_inds),
         );
         Some(item)
     }
 }
 
 pub fn tensor<T>(data: &[T], dims: &[i64], kind: tch::Kind) -> Tensor {
-    let t = unsafe {
-        Tensor::from_ptr(at_tensor_of_data(
-            data.as_ptr() as *const c_void,
-            dims.as_ptr(),
-            dims.len(),
-            kind.elt_size_in_bytes(),
-            match kind {
-                Kind::Uint8 => 0,
-                Kind::Int8 => 1,
-                Kind::Int16 => 2,
-                Kind::Int => 3,
-                Kind::Int64 => 4,
-                Kind::Half => 5,
-                Kind::Float => 6,
-                Kind::Double => 7,
-                Kind::ComplexHalf => 8,
-                Kind::ComplexFloat => 9,
-                Kind::ComplexDouble => 10,
-                Kind::Bool => 11,
-                Kind::QInt8 => 12,
-                Kind::QUInt8 => 13,
-                Kind::QInt32 => 14,
-                Kind::BFloat16 => 15,
-            },
-        ))
+    let dsize = kind.elt_size_in_bytes();
+    let dtype = match kind {
+        Kind::Uint8 => 0,
+        Kind::Int8 => 1,
+        Kind::Int16 => 2,
+        Kind::Int => 3,
+        Kind::Int64 => 4,
+        Kind::Half => 5,
+        Kind::Float => 6,
+        Kind::Double => 7,
+        Kind::ComplexHalf => 8,
+        Kind::ComplexFloat => 9,
+        Kind::ComplexDouble => 10,
+        Kind::Bool => 11,
+        Kind::QInt8 => 12,
+        Kind::QUInt8 => 13,
+        Kind::QInt32 => 14,
+        Kind::BFloat16 => 15,
     };
-    t
+    let data = data.as_ptr() as *const c_void;
+    let ndims = dims.len();
+    let dims = dims.as_ptr();
+    unsafe { Tensor::from_ptr(at_tensor_of_data(data, dims, ndims, dsize, dtype)) }
 }

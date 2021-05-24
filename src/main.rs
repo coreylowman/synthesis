@@ -8,6 +8,7 @@ mod runner;
 use crate::connect4::Connect4;
 use crate::data::{tensor, BatchRandSampler};
 use crate::env::Env;
+use crate::mcts::Policy;
 use crate::model::{ConvNet, UniformRandomPolicy};
 use crate::runner::{gather_experience, RunConfig};
 use rand::rngs::StdRng;
@@ -28,33 +29,57 @@ struct TrainConfig {
     pub weight_decay: f64,
     pub num_epochs: usize,
     pub batch_size: i64,
+    pub device: tch::Device,
+    pub kind: tch::Kind,
 }
 
 fn train(rng: &mut StdRng, rollout_cfg: &RunConfig, train_cfg: &TrainConfig) {
-    let vs = VarStore::new(rollout_cfg.device);
+    let vs = VarStore::new(train_cfg.device);
     let policy = ConvNet::new::<Connect4>(&vs);
     let mut opt = Adam::default().build(&vs, train_cfg.lr).unwrap();
     opt.set_weight_decay(train_cfg.weight_decay);
 
+    let mut state_dims = Connect4::get_state_dims();
+    state_dims.insert(0, -1);
+    let mut action_dims = [-1, Connect4::MAX_NUM_ACTIONS as i64];
+    let mut value_dims = [-1, 1];
+
     println!("{:?}", train_cfg);
     println!("{:?}", rollout_cfg);
     for i_epoch in 0..train_cfg.num_epochs {
-        let (states, target_pis, target_vs) =
-            gather_experience::<Connect4, ConvNet, StdRng>(rollout_cfg, &policy, rng);
-        let mut train_loss = 0f32;
+        // gather data
+        let (states, target_pis, target_vs) = {
+            let guard = tch::no_grad_guard();
+            let items = gather_experience::<Connect4, ConvNet, StdRng>(rollout_cfg, &policy, rng);
+            drop(guard);
+            items
+        };
+
+        // convert to tensors
+        state_dims[0] = target_vs.len() as i64;
+        action_dims[0] = target_vs.len() as i64;
+        value_dims[0] = target_vs.len() as i64;
+        let states = tensor(&states, &state_dims, train_cfg.kind);
+        let target_pis = tensor(&target_pis, &action_dims, train_cfg.kind);
+        let target_vs = tensor(&target_vs, &value_dims, train_cfg.kind);
+        println!("{:?} {:?} {:?}", states, target_pis, target_vs);
+
+        // construct sampler
         let sampler = BatchRandSampler::new(
             states,
             target_pis,
             target_vs,
             train_cfg.batch_size,
             true,
-            rollout_cfg.device,
+            train_cfg.device,
         );
 
+        // train
+        let mut train_loss = 0f32;
         for (state, target_pi, target_v) in sampler {
-            println!("Batch size {:?}", state.size()[0]);
             let (pi, v) = policy.forward(&state);
-            let pi_loss = -(target_pi * pi.log()).mean(rollout_cfg.kind);
+
+            let pi_loss = -(target_pi * pi.log()).mean(train_cfg.kind);
             let v_loss = v.mse_loss(&target_v, tch::Reduction::Mean);
 
             let loss = pi_loss + v_loss;
@@ -69,15 +94,27 @@ fn train(rng: &mut StdRng, rollout_cfg: &RunConfig, train_cfg: &TrainConfig) {
 
 fn bench(rng: &mut StdRng, rollout_cfg: &RunConfig) {
     // let policy = UniformRandomPolicy;
-    // loop {
-    //     run_game::<Connect4, UniformRandomPolicy, StdRng>(rollout_cfg, &policy, rng);
-    // }
-    let mut game = Connect4::new();
-    let start = Instant::now();
-    for _ in 0..1000 {
-        let t = game.state(tch::Kind::Float, tch::Device::Cpu);
+    let vs = VarStore::new(tch::Device::Cpu);
+    let policy = ConvNet::new::<Connect4>(&vs);
+    let game = Connect4::new();
+    loop {
+        let start = Instant::now();
+        // run_game::<Connect4, UniformRandomPolicy, StdRng>(rollout_cfg, &policy, rng);
+        let (states, pis, vs) =
+            gather_experience::<Connect4, ConvNet, StdRng>(rollout_cfg, &policy, rng);
+        println!("{:?}", vs.len());
+        // for _ in 0..10000 {
+        //     let x = game.state();
+        // }
+        // let xs = game.state();
+        // let t = tensor(&xs, &[1, 1, 6, 7], tch::Kind::Float);
+        // for _ in 0..1000 {
+        //     // let (pi, v) = policy.eval(&game);
+        //     let (policy, value) = policy.forward(&t);
+        // }
+
+        println!("{:?}", start.elapsed());
     }
-    println!("{:?}", start.elapsed());
 }
 
 fn main() {
@@ -90,22 +127,19 @@ fn main() {
         weight_decay: 1e-5,
         num_epochs: 1,
         batch_size: 128,
+        kind: tch::Kind::Float,
+        device: tch::Device::Cpu,
     };
 
     let rollout_cfg = RunConfig {
-        capacity: 1_000_000,
-        num_explores: 400,
+        capacity: 100_000,
+        num_explores: 100,
         temperature: 1.0,
-        kind: tch::Kind::Float,
-        device: tch::Device::cuda_if_available(),
         sample_action: true,
-        steps_per_epoch: (train_cfg.batch_size * 1) as usize,
+        steps_per_epoch: (train_cfg.batch_size * 10) as usize,
     };
 
-    // train(&mut rng, &rollout_cfg, &train_cfg);
-    bench(&mut rng, &rollout_cfg);
-
-    // let q = [[0.0, 1.0, 2.0], [3.0, 4.0, 5.0]];
-    // let t = tensor(&q, &[2, 3], Kind::Double);
-    // t.print();
+    train(&mut rng, &rollout_cfg, &train_cfg);
+    // let guard = tch::no_grad_guard();
+    // bench(&mut rng, &rollout_cfg);
 }

@@ -1,3 +1,4 @@
+use crate::data::tensor;
 use crate::env::Env;
 use crate::mcts::Policy;
 use tch::{self, nn, Tensor};
@@ -20,12 +21,19 @@ impl ConvNet {
             ..Default::default()
         };
         let root = &vs.root();
+        let dims = E::get_state_dims();
+        assert!(dims.len() == 3);
         Self {
             device: vs.device(),
-            conv_1: nn::conv2d(root / "conv_1", 2, 32, 3, cfg),
+            conv_1: nn::conv2d(root / "conv_1", dims[0], 32, 3, cfg),
             // conv_2: nn::conv2d(root / "conv_2", 32, 32, 3, cfg),
             // conv_3: nn::conv2d(root / "conv_3", 32, 32, 3, cfg),
-            fc_1: nn::linear(root / "fc_1", 32 * 6 * 7, 256, Default::default()),
+            fc_1: nn::linear(
+                root / "fc_1",
+                32 * dims[1] * dims[2],
+                256,
+                Default::default(),
+            ),
             // fc_2: nn::linear(root / "fc_2", 256, 256, Default::default()),
             p: nn::linear(
                 root / "p",
@@ -58,8 +66,9 @@ impl ConvNet {
 
 impl<E: Env> Policy<E> for ConvNet {
     fn eval(&self, env: &E) -> (Vec<f32>, f32) {
-        let xs = env.state(tch::Kind::Float, self.device).unsqueeze(0);
-        let (policy, value) = tch::no_grad(|| self.forward(&xs));
+        let xs = env.state();
+        let t = tensor(&xs, &[1, 1, 6, 7], tch::Kind::Float);
+        let (policy, value) = self.forward(&t);
         let policy = Vec::<f32>::from(&policy.squeeze1(0));
         let value = f32::from(&value);
         (policy, value)
@@ -69,7 +78,7 @@ impl<E: Env> Policy<E> for ConvNet {
 pub struct UniformRandomPolicy;
 impl<E: Env> Policy<E> for UniformRandomPolicy {
     fn eval(&self, env: &E) -> (Vec<f32>, f32) {
-        let xs = env.state(tch::Kind::Float, tch::Device::Cpu);
+        let xs = env.state();
         (
             vec![1.0 / (E::MAX_NUM_ACTIONS as f32); E::MAX_NUM_ACTIONS],
             0.0,

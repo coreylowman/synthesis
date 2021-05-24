@@ -1,8 +1,6 @@
-use crate::data::tensor;
-use crate::env::Env;
+use crate::env::{Env, HasTurnOrder};
 use rand::prelude::SliceRandom;
 use rand::rngs::StdRng;
-use tch::{IndexOp, Tensor};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PlayerId {
@@ -10,8 +8,12 @@ pub enum PlayerId {
     Black,
 }
 
-impl PlayerId {
-    fn next(&self) -> PlayerId {
+impl HasTurnOrder for PlayerId {
+    fn prev(&self) -> Self {
+        self.next()
+    }
+
+    fn next(&self) -> Self {
         match self {
             PlayerId::Black => PlayerId::Red,
             PlayerId::Red => PlayerId::Black,
@@ -246,22 +248,26 @@ impl Env for Connect4 {
         self.is_over()
     }
 
-    fn state(&self, kind: tch::Kind, device: tch::Device) -> Tensor {
-        let mut s = [[[0.0f32; WIDTH]; HEIGHT]; 2];
-        let mut p = self.player();
-        for i in 0..2 {
-            let p_state = &mut s[i];
-            for row in 0..HEIGHT {
-                let r_state = &mut p_state[row];
-                for col in 0..WIDTH {
-                    if self.at(row, col) == Some(p) {
-                        r_state[col] = 1.0;
-                    }
+    fn get_state_dims() -> Vec<i64> {
+        vec![1, HEIGHT as i64, WIDTH as i64]
+    }
+
+    fn state(&self) -> Vec<f32> {
+        let mut s = Vec::with_capacity(WIDTH * HEIGHT);
+        let p = self.player();
+        for row in 0..HEIGHT {
+            for col in 0..WIDTH {
+                let cell = self.at(row, col);
+                if cell.is_none() {
+                    s.push(0.0);
+                } else if self.at(row, col) == Some(p) {
+                    s.push(1.0);
+                } else {
+                    s.push(-1.0);
                 }
             }
-            p = p.next();
         }
-        tensor(&s, &[2, HEIGHT as i64, WIDTH as i64], kind)
+        s
     }
 
     fn print(&self) {
