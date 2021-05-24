@@ -28,7 +28,7 @@ pub fn run_game<E: Env + Clone, P: Policy<E>, R: Rng>(
     let mut is_over = false;
     while !is_over {
         let dur = mcts.explore_n(cfg.num_explores);
-        // println!("{:?}", dur);
+        println!("{:?}", dur);
 
         // save timestep
         let mut policy = Tensor::zeros(&[E::MAX_NUM_ACTIONS as i64], (cfg.kind, cfg.device));

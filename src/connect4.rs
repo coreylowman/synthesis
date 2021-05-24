@@ -1,3 +1,4 @@
+use crate::data::tensor;
 use crate::env::Env;
 use rand::prelude::SliceRandom;
 use rand::rngs::StdRng;
@@ -246,21 +247,21 @@ impl Env for Connect4 {
     }
 
     fn state(&self, kind: tch::Kind, device: tch::Device) -> Tensor {
-        let mut t = Tensor::zeros(&[2, HEIGHT as i64, WIDTH as i64], (kind, device));
+        let mut s = [[[0.0f32; WIDTH]; HEIGHT]; 2];
         let mut p = self.player();
-        for i in 0..2i64 {
-            for col in 0..WIDTH {
-                for row in 0..HEIGHT {
-                    if let Some(owner) = self.at(row, col) {
-                        if owner == p {
-                            t.i((i, row as i64, col as i64)).fill_(1.0);
-                        }
+        for i in 0..2 {
+            let p_state = &mut s[i];
+            for row in 0..HEIGHT {
+                let r_state = &mut p_state[row];
+                for col in 0..WIDTH {
+                    if self.at(row, col) == Some(p) {
+                        r_state[col] = 1.0;
                     }
                 }
             }
             p = p.next();
         }
-        t
+        tensor(&s, &[2, HEIGHT as i64, WIDTH as i64], kind)
     }
 
     fn print(&self) {

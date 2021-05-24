@@ -65,3 +65,14 @@ impl<E: Env> Policy<E> for ConvNet {
         (policy, value)
     }
 }
+
+pub struct UniformRandomPolicy;
+impl<E: Env> Policy<E> for UniformRandomPolicy {
+    fn eval(&self, env: &E) -> (Vec<f32>, f32) {
+        let xs = env.state(tch::Kind::Float, tch::Device::Cpu);
+        (
+            vec![1.0 / (E::MAX_NUM_ACTIONS as f32); E::MAX_NUM_ACTIONS],
+            0.0,
+        )
+    }
+}

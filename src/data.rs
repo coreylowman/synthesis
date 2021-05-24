@@ -1,4 +1,6 @@
-use tch::{IndexOp, Tensor};
+use std::ffi::c_void;
+use tch::{kind::Element, IndexOp, Kind, Tensor};
+use torch_sys::at_tensor_of_data;
 
 pub struct BatchRandSampler {
     inds: Tensor,
@@ -58,4 +60,34 @@ impl Iterator for BatchRandSampler {
         );
         Some(item)
     }
+}
+
+pub fn tensor<T>(data: &[T], dims: &[i64], kind: tch::Kind) -> Tensor {
+    let t = unsafe {
+        Tensor::from_ptr(at_tensor_of_data(
+            data.as_ptr() as *const c_void,
+            dims.as_ptr(),
+            dims.len(),
+            kind.elt_size_in_bytes(),
+            match kind {
+                Kind::Uint8 => 0,
+                Kind::Int8 => 1,
+                Kind::Int16 => 2,
+                Kind::Int => 3,
+                Kind::Int64 => 4,
+                Kind::Half => 5,
+                Kind::Float => 6,
+                Kind::Double => 7,
+                Kind::ComplexHalf => 8,
+                Kind::ComplexFloat => 9,
+                Kind::ComplexDouble => 10,
+                Kind::Bool => 11,
+                Kind::QInt8 => 12,
+                Kind::QUInt8 => 13,
+                Kind::QInt32 => 14,
+                Kind::BFloat16 => 15,
+            },
+        ))
+    };
+    t
 }

@@ -6,13 +6,21 @@ mod model;
 mod runner;
 
 use crate::connect4::Connect4;
-use crate::data::BatchRandSampler;
-use crate::model::ConvNet;
+use crate::data::{tensor, BatchRandSampler};
+use crate::env::Env;
+use crate::model::{ConvNet, UniformRandomPolicy};
 use crate::runner::{gather_experience, RunConfig};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
+use runner::run_game;
 use std::default::Default;
-use tch::nn::{Adam, OptimizerConfig, VarStore};
+use std::ffi::c_void;
+use std::time::Instant;
+use tch::{
+    kind::{self, Element},
+    nn::{Adam, OptimizerConfig, VarStore},
+    Kind, Tensor,
+};
 
 #[derive(Debug)]
 struct TrainConfig {
@@ -22,28 +30,7 @@ struct TrainConfig {
     pub batch_size: i64,
 }
 
-fn main() {
-    let seed = 0u64;
-    tch::manual_seed(seed as i64);
-    let mut rng = StdRng::seed_from_u64(seed);
-
-    let train_cfg = TrainConfig {
-        lr: 1e-3,
-        weight_decay: 1e-5,
-        num_epochs: 1,
-        batch_size: 128,
-    };
-
-    let rollout_cfg = RunConfig {
-        capacity: 1_000_000,
-        num_explores: 400,
-        temperature: 1.0,
-        kind: tch::Kind::Float,
-        device: tch::Device::cuda_if_available(),
-        sample_action: true,
-        steps_per_epoch: (train_cfg.batch_size * 1) as usize,
-    };
-
+fn train(rng: &mut StdRng, rollout_cfg: &RunConfig, train_cfg: &TrainConfig) {
     let vs = VarStore::new(rollout_cfg.device);
     let policy = ConvNet::new::<Connect4>(&vs);
     let mut opt = Adam::default().build(&vs, train_cfg.lr).unwrap();
@@ -53,7 +40,7 @@ fn main() {
     println!("{:?}", rollout_cfg);
     for i_epoch in 0..train_cfg.num_epochs {
         let (states, target_pis, target_vs) =
-            gather_experience::<Connect4, ConvNet, StdRng>(&rollout_cfg, &policy, &mut rng);
+            gather_experience::<Connect4, ConvNet, StdRng>(rollout_cfg, &policy, rng);
         let mut train_loss = 0f32;
         let sampler = BatchRandSampler::new(
             states,
@@ -78,4 +65,47 @@ fn main() {
 
         println!("Epoch {:?} - loss={}", i_epoch, train_loss);
     }
+}
+
+fn bench(rng: &mut StdRng, rollout_cfg: &RunConfig) {
+    // let policy = UniformRandomPolicy;
+    // loop {
+    //     run_game::<Connect4, UniformRandomPolicy, StdRng>(rollout_cfg, &policy, rng);
+    // }
+    let mut game = Connect4::new();
+    let start = Instant::now();
+    for _ in 0..1000 {
+        let t = game.state(tch::Kind::Float, tch::Device::Cpu);
+    }
+    println!("{:?}", start.elapsed());
+}
+
+fn main() {
+    let seed = 0u64;
+    tch::manual_seed(seed as i64);
+    let mut rng = StdRng::seed_from_u64(seed);
+
+    let train_cfg = TrainConfig {
+        lr: 1e-3,
+        weight_decay: 1e-5,
+        num_epochs: 1,
+        batch_size: 128,
+    };
+
+    let rollout_cfg = RunConfig {
+        capacity: 1_000_000,
+        num_explores: 400,
+        temperature: 1.0,
+        kind: tch::Kind::Float,
+        device: tch::Device::cuda_if_available(),
+        sample_action: true,
+        steps_per_epoch: (train_cfg.batch_size * 1) as usize,
+    };
+
+    // train(&mut rng, &rollout_cfg, &train_cfg);
+    bench(&mut rng, &rollout_cfg);
+
+    // let q = [[0.0, 1.0, 2.0], [3.0, 4.0, 5.0]];
+    // let t = tensor(&q, &[2, 3], Kind::Double);
+    // t.print();
 }
