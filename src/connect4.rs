@@ -1,6 +1,8 @@
+use std::collections::binary_heap::Iter;
+
 use crate::env::{Env, HasTurnOrder};
-use rand::prelude::SliceRandom;
 use rand::rngs::StdRng;
+use rand::Rng;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PlayerId {
@@ -26,24 +28,26 @@ const HEIGHT: usize = 6;
 
 #[derive(Clone)]
 pub struct Connect4 {
-    board: [[Option<PlayerId>; HEIGHT]; WIDTH],
+    my_bb: u64,
+    op_bb: u64,
+    height: [u8; WIDTH],
     player: PlayerId,
 }
 
 pub struct FreeColumns {
-    game: Connect4,
-    col: usize,
+    height: [u8; WIDTH],
+    col: u8,
 }
 
 impl Iterator for FreeColumns {
-    type Item = usize;
+    type Item = u8;
     fn next(&mut self) -> Option<Self::Item> {
-        if self.col == WIDTH {
+        if self.col == WIDTH as u8 {
             return None;
         }
 
-        while self.col < WIDTH {
-            if self.game.has_space(self.col) {
+        while self.col < WIDTH as u8 {
+            if self.height[self.col as usize] < HEIGHT as u8 {
                 let item = Some(self.col);
                 self.col += 1;
                 return item;
@@ -55,134 +59,23 @@ impl Iterator for FreeColumns {
     }
 }
 
-struct HorzCoords {
-    col: usize,
-    row: usize,
-    curr: usize,
-}
-impl Iterator for HorzCoords {
-    type Item = (usize, usize);
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.curr == 4 || self.col + self.curr >= WIDTH {
-            return None;
-        }
-        let item = Some((self.row, self.col + self.curr));
-        self.curr += 1;
-        return item;
-    }
-}
-
-struct VertCoords {
-    col: usize,
-    row: usize,
-    curr: usize,
-}
-impl Iterator for VertCoords {
-    type Item = (usize, usize);
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.curr == 4 || self.row + self.curr >= HEIGHT {
-            return None;
-        }
-        let item = Some((self.row + self.curr, self.col));
-        self.curr += 1;
-        return item;
-    }
-}
-
-struct DiagRightCoords {
-    col: usize,
-    row: usize,
-    curr: usize,
-}
-impl Iterator for DiagRightCoords {
-    type Item = (usize, usize);
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.curr == 4 || self.col + self.curr >= WIDTH || self.row + self.curr >= HEIGHT {
-            return None;
-        }
-        let item = Some((self.row + self.curr, self.col + self.curr));
-        self.curr += 1;
-        return item;
-    }
-}
-
-struct DiagLeftCoords {
-    col: usize,
-    row: usize,
-    curr: usize,
-}
-impl Iterator for DiagLeftCoords {
-    type Item = (usize, usize);
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.curr == 4 || self.curr > self.col || self.row + self.curr >= HEIGHT {
-            return None;
-        }
-        let item = Some((self.row + self.curr, self.col - self.curr));
-        self.curr += 1;
-        return item;
-    }
-}
-
 impl Connect4 {
-    fn at(&self, row: usize, col: usize) -> Option<PlayerId> {
-        self.board[col][row]
-    }
-
-    fn has_space(&self, col: usize) -> bool {
-        self.at(HEIGHT - 1, col).is_none()
-    }
-
-    fn drop(&mut self, col: usize) {
-        for i in 0..HEIGHT {
-            if self.board[col][i].is_none() {
-                self.board[col][i] = Some(self.player);
-                break;
-            }
-        }
-    }
-
     fn winner(&self) -> Option<PlayerId> {
-        if self.won(PlayerId::Black) {
-            Some(PlayerId::Black)
-        } else if self.won(PlayerId::Red) {
-            Some(PlayerId::Red)
+        if self.won(self.my_bb) {
+            Some(self.player)
+        } else if self.won(self.op_bb) {
+            Some(self.player.next())
         } else {
             None
         }
     }
 
-    fn won(&self, player: PlayerId) -> bool {
-        for row in 0..HEIGHT {
-            for col in 0..WIDTH {
-                if self.won_with(player, HorzCoords { col, row, curr: 0 }) {
-                    return true;
-                } else if self.won_with(player, VertCoords { col, row, curr: 0 }) {
-                    return true;
-                } else if self.won_with(player, DiagLeftCoords { col, row, curr: 0 }) {
-                    return true;
-                } else if self.won_with(player, DiagRightCoords { col, row, curr: 0 }) {
-                    return true;
-                }
-            }
-        }
-        false
-    }
-
-    fn won_with(&self, player: PlayerId, iter: impl Iterator<Item = (usize, usize)>) -> bool {
-        let mut count = 0;
-        for (row, col) in iter {
-            if let Some(owner) = self.at(row, col) {
-                if owner == player {
-                    count += 1;
-                    if count == 4 {
-                        return true;
-                    }
-                } else {
-                    count = 0;
-                }
-            }
-        }
-        false
+    fn won(&self, bb: u64) -> bool {
+        let d1 = bb & (bb >> 6) & (bb >> 12) & (bb >> 18);
+        let d2 = bb & (bb >> 8) & (bb >> 16) & (bb >> 24);
+        let h = bb & (bb >> 7) & (bb >> 14) & (bb >> 21);
+        let v = bb & (bb >> 1) & (bb >> 2) & (bb >> 3);
+        v + h + d1 + d2 > 0
     }
 }
 
@@ -191,12 +84,14 @@ impl Env for Connect4 {
     const NUM_PLAYERS: usize = 2;
 
     type PlayerId = PlayerId;
-    type Action = usize;
+    type Action = u8;
     type ActionIterator = FreeColumns;
 
     fn new() -> Self {
         Self {
-            board: [[None; HEIGHT]; WIDTH],
+            my_bb: 0,
+            op_bb: 0,
+            height: [0; WIDTH],
             player: PlayerId::Red,
         }
     }
@@ -206,7 +101,7 @@ impl Env for Connect4 {
     }
 
     fn is_over(&self) -> bool {
-        self.winner().is_some() || (0..WIDTH).all(|col| !self.has_space(col))
+        self.winner().is_some() || (0..WIDTH).all(|col| self.height[col] == HEIGHT as u8)
     }
 
     fn reward(&self, player_id: Self::PlayerId) -> f32 {
@@ -226,25 +121,31 @@ impl Env for Connect4 {
 
     fn iter_actions(&self) -> Self::ActionIterator {
         FreeColumns {
-            game: self.clone(),
+            height: self.height,
             col: 0,
         }
     }
 
     fn num_actions(&self) -> u8 {
-        self.iter_actions().collect::<Vec<Self::Action>>().len() as u8
+        self.iter_actions().count() as u8
     }
 
     fn get_random_action(&self, rng: &mut StdRng) -> Self::Action {
-        let actions = self.iter_actions().collect::<Vec<Self::Action>>();
-        *actions.choose(rng).unwrap()
+        let num = self.num_actions();
+        self.iter_actions()
+            .nth(rng.gen_range(0..num) as usize)
+            .unwrap()
     }
 
     fn step(&mut self, action: &Self::Action) -> bool {
-        let col = *action;
-        assert!(self.has_space(col));
-        self.drop(col);
+        let col = *action as usize;
+
+        self.my_bb ^= 1 << (self.height[col] + 7 * (col as u8));
+        self.height[col] += 1;
+
+        std::mem::swap(&mut self.my_bb, &mut self.op_bb);
         self.player = self.player.next();
+
         self.is_over()
     }
 
@@ -254,16 +155,15 @@ impl Env for Connect4 {
 
     fn state(&self) -> Vec<f32> {
         let mut s = Vec::with_capacity(WIDTH * HEIGHT);
-        let p = self.player();
         for row in 0..HEIGHT {
             for col in 0..WIDTH {
-                let cell = self.at(row, col);
-                if cell.is_none() {
-                    s.push(0.0);
-                } else if self.at(row, col) == Some(p) {
+                let index = 1 << (row + 7 * col);
+                if self.my_bb & index != 0 {
                     s.push(1.0);
-                } else {
+                } else if self.op_bb & index != 0 {
                     s.push(-1.0);
+                } else {
+                    s.push(0.0);
                 }
             }
         }
@@ -277,22 +177,56 @@ impl Env for Connect4 {
             println!("{:?} to play", self.player);
             println!(
                 "Available Actions: {:?}",
-                self.iter_actions().collect::<Vec<usize>>()
+                self.iter_actions().collect::<Vec<u8>>()
             );
         }
 
+        let (my_char, op_char) = match self.player {
+            PlayerId::Black => ("B", "r"),
+            PlayerId::Red => ("r", "B"),
+        };
+
         for row in (0..HEIGHT).rev() {
             for col in 0..WIDTH {
+                let index = 1 << (row + 7 * col);
                 print!(
-                    "{} ",
-                    match self.at(row, col) {
-                        Some(PlayerId::Black) => "B",
-                        Some(PlayerId::Red) => "r",
-                        None => ".",
+                    "{}",
+                    if self.my_bb & index != 0 {
+                        my_char
+                    } else if self.op_bb & index != 0 {
+                        op_char
+                    } else {
+                        "."
                     }
                 );
             }
             println!();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_connect4() {
+        let mut game = Connect4::new();
+        game.print();
+        let s = game.state();
+        assert!(s.iter().all(|&c| c == 0.0));
+        assert!(game.player() == PlayerId::Red);
+
+        assert!(game.step(&0) == false);
+        game.print();
+        let s = game.state();
+        assert!(s[0] == -1.0);
+        assert!(s[1..].iter().all(|&c| c == 0.0));
+
+        assert!(game.step(&2) == false);
+        game.print();
+        let s = game.state();
+        assert!(s[0] == 1.0);
+        assert!(s[2] == -1.0);
     }
 }
