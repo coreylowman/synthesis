@@ -13,9 +13,7 @@ use crate::model::{ConvNet, UniformRandomPolicy};
 use crate::runner::{gather_experience, RunConfig};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use runner::run_game;
 use std::default::Default;
-use std::ffi::c_void;
 use std::time::Instant;
 use tch::{
     kind::{self, Element},
@@ -35,7 +33,7 @@ struct TrainConfig {
 
 fn train(rng: &mut StdRng, rollout_cfg: &RunConfig, train_cfg: &TrainConfig) {
     let vs = VarStore::new(train_cfg.device);
-    let policy = ConvNet::new::<Connect4>(&vs);
+    let mut policy = ConvNet::new::<Connect4>(&vs);
     let mut opt = Adam::default().build(&vs, train_cfg.lr).unwrap();
     opt.set_weight_decay(train_cfg.weight_decay);
 
@@ -50,7 +48,8 @@ fn train(rng: &mut StdRng, rollout_cfg: &RunConfig, train_cfg: &TrainConfig) {
         // gather data
         let (states, target_pis, target_vs) = {
             let guard = tch::no_grad_guard();
-            let items = gather_experience::<Connect4, ConvNet, StdRng>(rollout_cfg, &policy, rng);
+            let items =
+                gather_experience::<Connect4, ConvNet, StdRng>(rollout_cfg, &mut policy, rng);
             drop(guard);
             items
         };
@@ -95,13 +94,13 @@ fn train(rng: &mut StdRng, rollout_cfg: &RunConfig, train_cfg: &TrainConfig) {
 fn bench(rng: &mut StdRng, rollout_cfg: &RunConfig) {
     // let policy = UniformRandomPolicy;
     let vs = VarStore::new(tch::Device::Cpu);
-    let policy = ConvNet::new::<Connect4>(&vs);
+    let mut policy = ConvNet::new::<Connect4>(&vs);
     let game = Connect4::new();
     loop {
         let start = Instant::now();
         // run_game::<Connect4, UniformRandomPolicy, StdRng>(rollout_cfg, &policy, rng);
         let (states, pis, vs) =
-            gather_experience::<Connect4, ConvNet, StdRng>(rollout_cfg, &policy, rng);
+            gather_experience::<Connect4, ConvNet, StdRng>(rollout_cfg, &mut policy, rng);
         println!("{:?}", vs.len());
         // for _ in 0..10000 {
         //     let x = game.state();
@@ -123,6 +122,7 @@ fn main() {
     let mut rng = StdRng::seed_from_u64(seed);
 
     println!("Connect4 {:?}", std::mem::size_of::<Connect4>());
+    println!("Box<Connect4> {:?}", std::mem::size_of::<Box<Connect4>>());
     println!(
         "Connect4::ActionIterator {:?}",
         std::mem::size_of::<<Connect4 as Env>::ActionIterator>()

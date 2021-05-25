@@ -1,3 +1,7 @@
+use ordered_float::OrderedFloat;
+use std::collections::HashMap;
+use std::marker::PhantomData;
+
 use crate::env::Env;
 use crate::mcts::{Policy, MCTS};
 use rand::{distributions::Distribution, distributions::WeightedIndex, Rng};
@@ -11,9 +15,29 @@ pub struct RunConfig {
     pub steps_per_epoch: usize,
 }
 
-pub fn run_game<E: Env + Clone, P: Policy<E>, R: Rng>(
+struct CachedPolicy<'a, E: Env, P: Policy<E>> {
+    pub policy: &'a mut P,
+    pub cache: HashMap<Vec<OrderedFloat<f32>>, (Vec<f32>, f32)>,
+    _marker: PhantomData<E>,
+}
+
+impl<'a, E: Env, P: Policy<E>> Policy<E> for CachedPolicy<'a, E, P> {
+    fn eval(&mut self, state: &Vec<f32>) -> (Vec<f32>, f32) {
+        let cache_key = state.iter().map(|&f| OrderedFloat(f)).collect();
+        match self.cache.get(&cache_key) {
+            Some((pi, v)) => (pi.clone(), *v),
+            None => {
+                let (pi, v) = self.policy.eval(state);
+                self.cache.insert(cache_key, (pi.clone(), v));
+                (pi, v)
+            }
+        }
+    }
+}
+
+fn run_game<E: Env + Clone, P: Policy<E>, R: Rng>(
     cfg: &RunConfig,
-    policy: &P,
+    policy: &mut P,
     rng: &mut R,
     states: &mut Vec<f32>,
     pis: &mut Vec<f32>,
@@ -73,15 +97,20 @@ pub fn run_game<E: Env + Clone, P: Policy<E>, R: Rng>(
 
 pub fn gather_experience<E: Env + Clone, P: Policy<E>, R: Rng>(
     cfg: &RunConfig,
-    policy: &P,
+    policy: &mut P,
     rng: &mut R,
 ) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
     let mut states: Vec<f32> = Vec::with_capacity(cfg.steps_per_epoch * 2);
     let mut pis: Vec<f32> = Vec::with_capacity(cfg.steps_per_epoch * 2);
     let mut vs: Vec<f32> = Vec::with_capacity(cfg.steps_per_epoch * 2);
-
+    let mut cached_policy = CachedPolicy {
+        policy,
+        cache: HashMap::with_capacity(cfg.steps_per_epoch * 2),
+        _marker: PhantomData,
+    };
     while vs.len() < cfg.steps_per_epoch {
-        run_game(cfg, policy, rng, &mut states, &mut pis, &mut vs);
+        run_game(cfg, &mut cached_policy, rng, &mut states, &mut pis, &mut vs);
+        // run_game(cfg, policy, rng, &mut states, &mut pis, &mut vs);
         // println!("{:?}", states.len());
     }
 

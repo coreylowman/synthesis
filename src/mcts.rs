@@ -39,18 +39,18 @@ impl<E: Env + Clone> Node<E> {
 }
 
 pub trait Policy<E: Env> {
-    fn eval(&self, state: &Vec<f32>) -> (Vec<f32>, f32);
+    fn eval(&mut self, state: &Vec<f32>) -> (Vec<f32>, f32);
 }
 
 pub struct MCTS<'a, E: Env + Clone, P: Policy<E>> {
     pub root: usize,
     pub nodes: Vec<Node<E>>,
     pub states: Vec<Vec<f32>>,
-    pub policy: &'a P,
+    pub policy: &'a mut P,
 }
 
 impl<'a, E: Env + Clone, P: Policy<E>> MCTS<'a, E, P> {
-    pub fn with_capacity(capacity: usize, policy: &'a P) -> Self {
+    pub fn with_capacity(capacity: usize, policy: &'a mut P) -> Self {
         let env = E::new();
         let state = env.state();
         let (action_probs, value) = policy.eval(&state);

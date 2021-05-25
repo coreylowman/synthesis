@@ -4,7 +4,6 @@ use crate::mcts::Policy;
 use tch::{self, nn, Tensor};
 
 pub struct ConvNet {
-    device: tch::Device,
     conv_1: nn::Conv2D,
     // conv_2: nn::Conv2D,
     // conv_3: nn::Conv2D,
@@ -24,7 +23,6 @@ impl ConvNet {
         let dims = E::get_state_dims();
         assert!(dims.len() == 3);
         Self {
-            device: vs.device(),
             conv_1: nn::conv2d(root / "conv_1", dims[0], 32, 3, cfg),
             // conv_2: nn::conv2d(root / "conv_2", 32, 32, 3, cfg),
             // conv_3: nn::conv2d(root / "conv_3", 32, 32, 3, cfg),
@@ -65,7 +63,7 @@ impl ConvNet {
 }
 
 impl<E: Env> Policy<E> for ConvNet {
-    fn eval(&self, xs: &Vec<f32>) -> (Vec<f32>, f32) {
+    fn eval(&mut self, xs: &Vec<f32>) -> (Vec<f32>, f32) {
         let t = tensor(&xs, &[1, 1, 6, 7], tch::Kind::Float);
         let (policy, value) = self.forward(&t);
         let policy = Vec::<f32>::from(&policy.squeeze1(0));
@@ -76,7 +74,7 @@ impl<E: Env> Policy<E> for ConvNet {
 
 pub struct UniformRandomPolicy;
 impl<E: Env> Policy<E> for UniformRandomPolicy {
-    fn eval(&self, xs: &Vec<f32>) -> (Vec<f32>, f32) {
+    fn eval(&mut self, xs: &Vec<f32>) -> (Vec<f32>, f32) {
         (
             vec![1.0 / (E::MAX_NUM_ACTIONS as f32); E::MAX_NUM_ACTIONS],
             0.0,
