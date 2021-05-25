@@ -144,6 +144,7 @@ impl<'a, E: Env + Clone, P: Policy<E>> MCTS<'a, E, P> {
     }
 
     fn explore(&mut self) {
+        let child_id = self.next_node_id();
         let mut node_id = self.root;
         loop {
             // assert!(node_id < self.nodes.len());
@@ -159,10 +160,7 @@ impl<'a, E: Env + Clone, P: Policy<E>> MCTS<'a, E, P> {
             } else {
                 match node.actions.next() {
                     Some(action) => {
-                        let child_id = self.next_node_id();
-
                         // add to children
-                        let node = &mut self.nodes[node_id - self.root];
                         node.children.push((action, child_id));
 
                         // create the child node... note we will be modifying num_visits and reward later, so mutable
