@@ -5,7 +5,7 @@ pub trait HasTurnOrder: Eq + Clone + Copy + std::fmt::Debug {
     fn next(&self) -> Self;
 }
 
-pub trait Env {
+pub trait Env: Clone {
     type PlayerId: HasTurnOrder;
     type Action: Eq + Clone + Copy + std::fmt::Debug + Into<usize> + From<usize>;
     type ActionIterator: Iterator<Item = Self::Action>;

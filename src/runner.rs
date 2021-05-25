@@ -35,7 +35,7 @@ impl<'a, E: Env, P: Policy<E>> Policy<E> for CachedPolicy<'a, E, P> {
     }
 }
 
-fn run_game<E: Env + Clone, P: Policy<E>, R: Rng>(
+fn run_game<E: Env, P: Policy<E>, R: Rng>(
     cfg: &RunConfig,
     policy: &mut P,
     rng: &mut R,
@@ -95,7 +95,7 @@ fn run_game<E: Env + Clone, P: Policy<E>, R: Rng>(
     }
 }
 
-pub fn gather_experience<E: Env + Clone, P: Policy<E>, R: Rng>(
+pub fn gather_experience<E: Env, P: Policy<E>, R: Rng>(
     cfg: &RunConfig,
     policy: &mut P,
     rng: &mut R,

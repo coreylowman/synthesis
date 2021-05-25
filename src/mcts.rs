@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 const C_PUCT: f32 = 1.0;
 
-pub struct Node<E: Env + Clone> {
+pub struct Node<E: Env> {
     pub parent: usize,
     pub env: E,
     pub terminal: bool,
@@ -15,7 +15,7 @@ pub struct Node<E: Env + Clone> {
     pub action_probs: Vec<f32>,
 }
 
-impl<E: Env + Clone> Node<E> {
+impl<E: Env> Node<E> {
     pub fn new(
         parent_id: usize,
         env: E,
@@ -42,14 +42,14 @@ pub trait Policy<E: Env> {
     fn eval(&mut self, state: &Vec<f32>) -> (Vec<f32>, f32);
 }
 
-pub struct MCTS<'a, E: Env + Clone, P: Policy<E>> {
+pub struct MCTS<'a, E: Env, P: Policy<E>> {
     pub root: usize,
     pub nodes: Vec<Node<E>>,
     pub states: Vec<Vec<f32>>,
     pub policy: &'a mut P,
 }
 
-impl<'a, E: Env + Clone, P: Policy<E>> MCTS<'a, E, P> {
+impl<'a, E: Env, P: Policy<E>> MCTS<'a, E, P> {
     pub fn with_capacity(capacity: usize, policy: &'a mut P) -> Self {
         let env = E::new();
         let state = env.state();
@@ -113,21 +113,6 @@ impl<'a, E: Env + Clone, P: Policy<E>> MCTS<'a, E, P> {
 
     pub fn get_node(&self, node_id: usize) -> &Node<E> {
         &self.nodes[node_id - self.root]
-    }
-
-    pub fn visit_counts(&self) -> (Vec<E::Action>, Vec<f32>) {
-        let root = &self.nodes[self.root - self.root];
-
-        let mut actions = Vec::with_capacity(root.children.len());
-        let mut visits = Vec::with_capacity(root.children.len());
-
-        for &(action, child_id) in root.children.iter() {
-            let child = &self.nodes[child_id - self.root];
-            actions.push(action);
-            visits.push(child.num_visits);
-        }
-
-        (actions, visits)
     }
 
     pub fn best_action(&self) -> E::Action {
