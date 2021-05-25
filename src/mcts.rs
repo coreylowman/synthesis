@@ -8,7 +8,6 @@ pub struct Node<E: Env + Clone> {
     pub env: E,
     pub terminal: bool,
     pub expanded: bool,
-    pub state: Vec<f32>,
     pub actions: E::ActionIterator,
     pub children: Vec<(E::Action, usize)>,
     pub cum_value: f32,
@@ -20,7 +19,6 @@ impl<E: Env + Clone> Node<E> {
     pub fn new(
         parent_id: usize,
         env: E,
-        state: Vec<f32>,
         is_over: bool,
         action_probs: Vec<f32>,
         value: f32,
@@ -31,7 +29,6 @@ impl<E: Env + Clone> Node<E> {
             env,
             terminal: is_over,
             expanded: is_over,
-            state,
             actions,
             children: Vec::new(),
             num_visits: 1.0,
@@ -48,6 +45,7 @@ pub trait Policy<E: Env> {
 pub struct MCTS<'a, E: Env + Clone, P: Policy<E>> {
     pub root: usize,
     pub nodes: Vec<Node<E>>,
+    pub states: Vec<Vec<f32>>,
     pub policy: &'a P,
 }
 
@@ -56,14 +54,17 @@ impl<'a, E: Env + Clone, P: Policy<E>> MCTS<'a, E, P> {
         let env = E::new();
         let state = env.state();
         let (action_probs, value) = policy.eval(&state);
-        let root = Node::new(0, env, state, false, action_probs, value);
+        let root = Node::new(0, env, false, action_probs, value);
 
         let mut nodes = Vec::with_capacity(capacity);
+        let mut states = Vec::with_capacity(capacity);
         nodes.push(root);
+        states.push(state);
 
         Self {
             root: 0,
             nodes,
+            states,
             policy,
         }
     }
@@ -82,6 +83,7 @@ impl<'a, E: Env + Clone, P: Policy<E>> MCTS<'a, E, P> {
             Some(action_index) => {
                 let (_a, new_root) = self.nodes[self.root - self.root].children[action_index];
                 drop(self.nodes.drain(0..new_root - self.root));
+                drop(self.states.drain(0..new_root - self.root));
                 new_root
             }
             None => {
@@ -89,9 +91,11 @@ impl<'a, E: Env + Clone, P: Policy<E>> MCTS<'a, E, P> {
                 let is_over = env.step(action);
                 let state = env.state();
                 let (action_probs, value) = self.policy.eval(&state);
-                let child_node = Node::new(0, env, state, is_over, action_probs, value);
+                let child_node = Node::new(0, env, is_over, action_probs, value);
                 self.nodes.clear();
+                self.states.clear();
                 self.nodes.push(child_node);
+                self.states.push(state);
                 0
             }
         };
@@ -101,6 +105,10 @@ impl<'a, E: Env + Clone, P: Policy<E>> MCTS<'a, E, P> {
 
     pub fn root_node(&self) -> &Node<E> {
         self.get_node(self.root)
+    }
+
+    pub fn root_state(&self) -> &Vec<f32> {
+        &self.states[self.root - self.root]
     }
 
     pub fn get_node(&self, node_id: usize) -> &Node<E> {
@@ -168,8 +176,9 @@ impl<'a, E: Env + Clone, P: Policy<E>> MCTS<'a, E, P> {
                         let is_over = env.step(&action);
                         let state = env.state();
                         let (action_probs, value) = self.policy.eval(&state);
-                        let child = Node::new(node_id, env, state, is_over, action_probs, value);
+                        let child = Node::new(node_id, env, is_over, action_probs, value);
                         self.nodes.push(child);
+                        self.states.push(state);
                         self.backprop(node_id, -value);
                         return;
                     }

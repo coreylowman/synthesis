@@ -20,8 +20,6 @@ pub trait Env {
     fn is_over(&self) -> bool;
     fn reward(&self, player_id: Self::PlayerId) -> f32;
     fn iter_actions(&self) -> Self::ActionIterator;
-    fn num_actions(&self) -> u8;
-    fn get_random_action(&self, rng: &mut StdRng) -> Self::Action;
     fn step(&mut self, action: &Self::Action) -> bool;
     fn state(&self) -> Vec<f32>;
     fn print(&self);

@@ -140,17 +140,6 @@ impl Env for Connect4 {
         }
     }
 
-    fn num_actions(&self) -> u8 {
-        self.iter_actions().count() as u8
-    }
-
-    fn get_random_action(&self, rng: &mut StdRng) -> Self::Action {
-        let num = self.num_actions();
-        self.iter_actions()
-            .nth(rng.gen_range(0..num) as usize)
-            .unwrap()
-    }
-
     fn step(&mut self, action: &Self::Action) -> bool {
         let col: usize = (*action).into();
 

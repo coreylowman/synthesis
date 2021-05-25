@@ -45,8 +45,8 @@ pub fn run_game<E: Env + Clone, P: Policy<E>, R: Rng>(
             policy[i] /= total;
         }
 
-        states.extend(&root_node.state);
-        pis.extend(&policy);
+        states.extend(mcts.root_state());
+        pis.extend(policy.iter());
         vs.push(0.0);
 
         let action = if cfg.sample_action {
