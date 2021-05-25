@@ -8,7 +8,7 @@ mod runner;
 use crate::connect4::Connect4;
 use crate::data::{tensor, BatchRandSampler};
 use crate::env::Env;
-use crate::mcts::Policy;
+use crate::mcts::{Node, Policy, MCTS};
 use crate::model::{ConvNet, UniformRandomPolicy};
 use crate::runner::{gather_experience, RunConfig};
 use rand::rngs::StdRng;
@@ -122,6 +122,13 @@ fn main() {
     tch::manual_seed(seed as i64);
     let mut rng = StdRng::seed_from_u64(seed);
 
+    println!("Connect4 {:?}", std::mem::size_of::<Connect4>());
+    println!(
+        "Connect4::ActionIterator {:?}",
+        std::mem::size_of::<<Connect4 as Env>::ActionIterator>()
+    );
+    println!("Node<Connect4> {:?}", std::mem::size_of::<Node<Connect4>>());
+
     let train_cfg = TrainConfig {
         lr: 1e-3,
         weight_decay: 1e-5,
@@ -139,7 +146,7 @@ fn main() {
         steps_per_epoch: (train_cfg.batch_size * 10) as usize,
     };
 
-    train(&mut rng, &rollout_cfg, &train_cfg);
-    // let guard = tch::no_grad_guard();
-    // bench(&mut rng, &rollout_cfg);
+    // train(&mut rng, &rollout_cfg, &train_cfg);
+    let guard = tch::no_grad_guard();
+    bench(&mut rng, &rollout_cfg);
 }

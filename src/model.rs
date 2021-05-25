@@ -65,8 +65,7 @@ impl ConvNet {
 }
 
 impl<E: Env> Policy<E> for ConvNet {
-    fn eval(&self, env: &E) -> (Vec<f32>, f32) {
-        let xs = env.state();
+    fn eval(&self, xs: &Vec<f32>) -> (Vec<f32>, f32) {
         let t = tensor(&xs, &[1, 1, 6, 7], tch::Kind::Float);
         let (policy, value) = self.forward(&t);
         let policy = Vec::<f32>::from(&policy.squeeze1(0));
@@ -77,8 +76,7 @@ impl<E: Env> Policy<E> for ConvNet {
 
 pub struct UniformRandomPolicy;
 impl<E: Env> Policy<E> for UniformRandomPolicy {
-    fn eval(&self, env: &E) -> (Vec<f32>, f32) {
-        let xs = env.state();
+    fn eval(&self, xs: &Vec<f32>) -> (Vec<f32>, f32) {
         (
             vec![1.0 / (E::MAX_NUM_ACTIONS as f32); E::MAX_NUM_ACTIONS],
             0.0,

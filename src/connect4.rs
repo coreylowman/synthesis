@@ -34,13 +34,27 @@ pub struct Connect4 {
     player: PlayerId,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct Column(u8);
+
+impl From<usize> for Column {
+    fn from(x: usize) -> Self {
+        Column(x as u8)
+    }
+}
+
+impl Into<usize> for Column {
+    fn into(self) -> usize {
+        self.0 as usize
+    }
+}
 pub struct FreeColumns {
     height: [u8; WIDTH],
     col: u8,
 }
 
 impl Iterator for FreeColumns {
-    type Item = u8;
+    type Item = Column;
     fn next(&mut self) -> Option<Self::Item> {
         if self.col == WIDTH as u8 {
             return None;
@@ -48,7 +62,7 @@ impl Iterator for FreeColumns {
 
         while self.col < WIDTH as u8 {
             if self.height[self.col as usize] < HEIGHT as u8 {
-                let item = Some(self.col);
+                let item = Some(Column(self.col));
                 self.col += 1;
                 return item;
             }
@@ -84,7 +98,7 @@ impl Env for Connect4 {
     const NUM_PLAYERS: usize = 2;
 
     type PlayerId = PlayerId;
-    type Action = u8;
+    type Action = Column;
     type ActionIterator = FreeColumns;
 
     fn new() -> Self {
@@ -105,7 +119,7 @@ impl Env for Connect4 {
     }
 
     fn reward(&self, player_id: Self::PlayerId) -> f32 {
-        assert!(self.is_over());
+        // assert!(self.is_over());
 
         match self.winner() {
             Some(winner) => {
@@ -138,7 +152,7 @@ impl Env for Connect4 {
     }
 
     fn step(&mut self, action: &Self::Action) -> bool {
-        let col = *action as usize;
+        let col: usize = (*action).into();
 
         self.my_bb ^= 1 << (self.height[col] + 7 * (col as u8));
         self.height[col] += 1;
@@ -177,7 +191,7 @@ impl Env for Connect4 {
             println!("{:?} to play", self.player);
             println!(
                 "Available Actions: {:?}",
-                self.iter_actions().collect::<Vec<u8>>()
+                self.iter_actions().collect::<Vec<Column>>()
             );
         }
 
@@ -217,13 +231,13 @@ mod tests {
         assert!(s.iter().all(|&c| c == 0.0));
         assert!(game.player() == PlayerId::Red);
 
-        assert!(game.step(&0) == false);
+        assert!(game.step(&Column(0)) == false);
         game.print();
         let s = game.state();
         assert!(s[0] == -1.0);
         assert!(s[1..].iter().all(|&c| c == 0.0));
 
-        assert!(game.step(&2) == false);
+        assert!(game.step(&Column(2)) == false);
         game.print();
         let s = game.state();
         assert!(s[0] == 1.0);

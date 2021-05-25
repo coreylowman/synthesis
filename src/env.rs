@@ -7,7 +7,7 @@ pub trait HasTurnOrder: Eq + Clone + Copy + std::fmt::Debug {
 
 pub trait Env {
     type PlayerId: HasTurnOrder;
-    type Action: Eq + Clone + Copy + std::fmt::Debug + Into<usize>;
+    type Action: Eq + Clone + Copy + std::fmt::Debug + Into<usize> + From<usize>;
     type ActionIterator: Iterator<Item = Self::Action>;
 
     const MAX_NUM_ACTIONS: usize;

@@ -1,4 +1,4 @@
-use crate::env::{Env, HasTurnOrder};
+use crate::env::Env;
 use crate::mcts::{Policy, MCTS};
 use rand::{distributions::Distribution, distributions::WeightedIndex, Rng};
 
@@ -24,32 +24,35 @@ pub fn run_game<E: Env + Clone, P: Policy<E>, R: Rng>(
     let mut game = E::new();
     let start_player = game.player();
     let mut is_over = false;
+    let mut policy = vec![0.0; E::MAX_NUM_ACTIONS];
+
     while !is_over {
         let dur = mcts.explore_n(cfg.num_explores);
         // println!("{:?}", dur);
 
+        let root_node = mcts.root_node();
+
         // save timestep
-        let mut policy = vec![0.0; E::MAX_NUM_ACTIONS];
         let mut total = 0.0;
-        let (actions, mut visit_counts) = mcts.visit_counts();
-        for num_visits in visit_counts.iter_mut() {
-            let value = (*num_visits).powf(1.0 / cfg.temperature);
-            *num_visits = value;
+        policy.fill(0.0);
+        for &(action, child_id) in root_node.children.iter() {
+            let child = mcts.get_node(child_id);
+            let value = child.num_visits.powf(1.0 / cfg.temperature);
+            policy[action.into()] = value;
             total += value;
         }
-        for (&action, num_visits) in actions.iter().zip(visit_counts.iter_mut()) {
-            *num_visits /= total;
-            policy[action.into()] = *num_visits;
+        for i in 0..E::MAX_NUM_ACTIONS {
+            policy[i] /= total;
         }
 
-        states.extend(game.state());
-        pis.extend(policy);
+        states.extend(&root_node.state);
+        pis.extend(&policy);
         vs.push(0.0);
 
         let action = if cfg.sample_action {
-            let dist = WeightedIndex::new(visit_counts).unwrap();
+            let dist = WeightedIndex::new(&policy).unwrap();
             let choice = dist.sample(rng);
-            actions[choice]
+            E::Action::from(choice)
         } else {
             mcts.best_action()
         };
