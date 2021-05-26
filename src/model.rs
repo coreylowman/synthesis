@@ -1,8 +1,7 @@
-use std::marker::PhantomData;
-
 use crate::data::tensor;
 use crate::env::Env;
 use crate::mcts::Policy;
+use std::marker::PhantomData;
 use tch::{self, nn, Tensor};
 
 pub trait NNPolicy<E: Env> {
@@ -75,7 +74,7 @@ impl<E: Env> Policy<E> for ConvNet<E> {
 }
 pub struct UniformRandomPolicy;
 impl<E: Env> Policy<E> for UniformRandomPolicy {
-    fn eval(&mut self, xs: &Vec<f32>) -> (Vec<f32>, f32) {
+    fn eval(&mut self, _xs: &Vec<f32>) -> (Vec<f32>, f32) {
         (
             vec![1.0 / (E::MAX_NUM_ACTIONS as f32); E::MAX_NUM_ACTIONS],
             0.0,

@@ -1,11 +1,10 @@
-use ordered_float::OrderedFloat;
-use std::collections::HashMap;
-use std::marker::PhantomData;
-
 use crate::env::Env;
 use crate::mcts::{Policy, MCTS};
 use crate::model::NNPolicy;
+use ordered_float::OrderedFloat;
 use rand::{distributions::Distribution, distributions::WeightedIndex, seq::SliceRandom, Rng};
+use std::collections::HashMap;
+use std::marker::PhantomData;
 
 #[derive(Debug, Clone, Copy)]
 pub struct RolloutConfig {
@@ -59,7 +58,7 @@ fn run_game<E: Env, P: Policy<E>, R: Rng>(
     let mut policy = vec![0.0; E::MAX_NUM_ACTIONS];
 
     while !is_over {
-        let dur = mcts.explore_n(cfg.num_explores);
+        let _dur = mcts.explore_n(cfg.num_explores);
         // println!("{:?}", dur);
 
         let root_node = mcts.root_node();
@@ -109,9 +108,9 @@ pub fn eval<E: Env, P: Policy<E> + NNPolicy<E>, R: Rng>(
     policy: &mut P,
 ) -> f32 {
     let mut game = E::new();
-    let mut player = game.player();
+    let player = game.player();
     let mut wins = 0.0;
-    for i_game in 0..cfg.num_games {
+    for _i_game in 0..cfg.num_games {
         game = E::new();
         let mut mcts = MCTS::<E, P>::with_capacity(cfg.capacity, policy);
         loop {

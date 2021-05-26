@@ -1,32 +1,31 @@
 use std::ffi::c_void;
-use tch::{kind::Element, IndexOp, Kind, Tensor};
+use tch::{Kind, Tensor};
 use torch_sys::at_tensor_of_data;
 
-pub struct BatchRandSampler {
+pub struct BatchRandSampler<'a> {
     inds: Tensor,
-    x: Tensor,
-    y: Tensor,
-    z: Tensor,
+
+    x: &'a Tensor,
+    y: &'a Tensor,
+    z: &'a Tensor,
 
     size: i64,
     batch_size: i64,
     index: i64,
     drop_last: bool,
-    device: tch::Device,
 }
 
-impl BatchRandSampler {
+impl<'a> BatchRandSampler<'a> {
     pub fn new(
-        x: Tensor,
-        y: Tensor,
-        z: Tensor,
+        x: &'a Tensor,
+        y: &'a Tensor,
+        z: &'a Tensor,
         batch_size: i64,
         drop_last: bool,
-        device: tch::Device,
     ) -> Self {
         let n = x.size()[0];
         Self {
-            inds: Tensor::randperm(n, (tch::Kind::Int64, device)),
+            inds: Tensor::randperm(n, tch::kind::INT64_CPU),
             x,
             y,
             z,
@@ -34,12 +33,11 @@ impl BatchRandSampler {
             batch_size,
             index: 0,
             drop_last,
-            device,
         }
     }
 }
 
-impl Iterator for BatchRandSampler {
+impl<'a> Iterator for BatchRandSampler<'a> {
     type Item = (Tensor, Tensor, Tensor);
 
     fn next(&mut self) -> Option<Self::Item> {
