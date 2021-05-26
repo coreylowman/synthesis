@@ -49,7 +49,7 @@ fn train<E: Env, P: Policy<E> + NNPolicy<E>>(
 
     let win_pct = {
         let _guard = tch::no_grad_guard();
-        eval(evaluation_cfg, rng, &mut policy)
+        eval(evaluation_cfg, &mut policy)
     };
     println!("Init win pct {:.3}%", win_pct * 100.0);
 
@@ -75,24 +75,30 @@ fn train<E: Env, P: Policy<E> + NNPolicy<E>>(
                 BatchRandSampler::new(&states, &target_pis, &target_vs, train_cfg.batch_size, true);
 
             // train
-            let mut epoch_loss = 0f32;
+            let mut pi_eloss = 0f32;
+            let mut v_eloss = 0f32;
             for (state, target_pi, target_v) in sampler {
                 let (pi, v) = policy.forward(&state);
 
-                let pi_loss = -(target_pi * pi.log()).mean(train_cfg.kind);
+                let pi_loss = -(target_pi * pi.log()).sum(train_cfg.kind) / train_cfg.batch_size;
                 let v_loss = v.mse_loss(&target_v, tch::Reduction::Mean);
+                // println!("{:?} {:?}", pi_loss, v_loss);
 
-                let loss = pi_loss + v_loss;
+                let loss = &pi_loss + &v_loss;
                 opt.backward_step(&loss);
 
-                epoch_loss += f32::from(&loss);
+                pi_eloss += f32::from(&pi_loss);
+                v_eloss += f32::from(&v_loss);
             }
-            println!("\tEpoch {} loss={}", i_epoch, epoch_loss);
+            println!(
+                "\tEpoch {} pi_loss={} v_loss={}",
+                i_epoch, pi_eloss, v_eloss
+            );
         }
 
         let win_pct = {
             let _guard = tch::no_grad_guard();
-            eval(evaluation_cfg, rng, &mut policy)
+            eval(evaluation_cfg, &mut policy)
         };
         println!("Iteration {} strength={:.3}%.", i_iter, win_pct * 100.0);
     }
@@ -115,8 +121,8 @@ fn main() {
         lr: 1e-3,
         weight_decay: 1e-5,
         num_iterations: 10,
-        num_epochs: 8,
-        batch_size: 128,
+        num_epochs: 32,
+        batch_size: 256,
         kind: tch::Kind::Float,
         device: tch::Device::Cpu,
     };
@@ -133,6 +139,7 @@ fn main() {
         capacity: rollout_cfg.capacity,
         num_explores: rollout_cfg.num_explores,
         num_games: 100,
+        seed: 10,
     };
 
     train::<Connect4, ConvNet<Connect4>>(&mut rng, &rollout_cfg, &train_cfg, &evaluation_cfg);

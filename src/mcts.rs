@@ -13,6 +13,7 @@ pub struct Node<E: Env> {
     pub cum_value: f32,
     pub num_visits: f32,
     pub action_probs: Vec<f32>,
+    pub value: f32,
 }
 
 impl<E: Env> Node<E> {
@@ -34,6 +35,7 @@ impl<E: Env> Node<E> {
             num_visits: 1.0,
             cum_value: value,
             action_probs,
+            value,
         }
     }
 }
@@ -142,11 +144,10 @@ impl<'a, E: Env, P: Policy<E>> MCTS<'a, E, P> {
         loop {
             // assert!(node_id < self.nodes.len());
             let node = &mut self.nodes[node_id - self.root];
-            let parent = node.parent;
-            let v = node.cum_value;
+            let v = node.value;
             if node.terminal {
                 // let (_, value) = self.policy.eval(&node.env);
-                self.backprop(parent, -v);
+                self.backprop(node_id, v);
                 return;
             } else if node.expanded {
                 node_id = self.select_best_child(node_id);

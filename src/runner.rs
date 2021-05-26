@@ -2,7 +2,10 @@ use crate::env::Env;
 use crate::mcts::{Policy, MCTS};
 use crate::model::NNPolicy;
 use ordered_float::OrderedFloat;
-use rand::{distributions::Distribution, distributions::WeightedIndex, seq::SliceRandom, Rng};
+use rand::{
+    distributions::Distribution, distributions::WeightedIndex, rngs::StdRng, seq::SliceRandom, Rng,
+    SeedableRng,
+};
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
@@ -20,6 +23,7 @@ pub struct EvaluationConfig {
     pub capacity: usize,
     pub num_explores: usize,
     pub num_games: usize,
+    pub seed: u64,
 }
 
 struct PolicyWithCache<'a, E: Env, P: Policy<E>> {
@@ -102,11 +106,8 @@ fn run_game<E: Env, P: Policy<E>, R: Rng>(
     }
 }
 
-pub fn eval<E: Env, P: Policy<E> + NNPolicy<E>, R: Rng>(
-    cfg: &EvaluationConfig,
-    rng: &mut R,
-    policy: &mut P,
-) -> f32 {
+pub fn eval<E: Env, P: Policy<E> + NNPolicy<E>>(cfg: &EvaluationConfig, policy: &mut P) -> f32 {
+    let mut rng = StdRng::seed_from_u64(cfg.seed);
     let mut game = E::new();
     let player = game.player();
     let mut wins = 0.0;
@@ -119,7 +120,7 @@ pub fn eval<E: Env, P: Policy<E> + NNPolicy<E>, R: Rng>(
                 mcts.best_action()
             } else {
                 let actions: Vec<E::Action> = game.iter_actions().collect();
-                *actions.choose(rng).unwrap()
+                *actions.choose(&mut rng).unwrap()
             };
             mcts.step_action(&action);
             if game.step(&action) {
