@@ -4,10 +4,11 @@ use std::marker::PhantomData;
 
 use crate::env::Env;
 use crate::mcts::{Policy, MCTS};
-use rand::{distributions::Distribution, distributions::WeightedIndex, Rng};
+use crate::model::NNPolicy;
+use rand::{distributions::Distribution, distributions::WeightedIndex, seq::SliceRandom, Rng};
 
 #[derive(Debug, Clone, Copy)]
-pub struct RunConfig {
+pub struct RolloutConfig {
     pub capacity: usize,
     pub num_explores: usize,
     pub temperature: f32,
@@ -15,13 +16,20 @@ pub struct RunConfig {
     pub steps_per_epoch: usize,
 }
 
-struct CachedPolicy<'a, E: Env, P: Policy<E>> {
+#[derive(Debug, Clone, Copy)]
+pub struct EvaluationConfig {
+    pub capacity: usize,
+    pub num_explores: usize,
+    pub num_games: usize,
+}
+
+struct PolicyWithCache<'a, E: Env, P: Policy<E>> {
     pub policy: &'a mut P,
     pub cache: HashMap<Vec<OrderedFloat<f32>>, (Vec<f32>, f32)>,
     _marker: PhantomData<E>,
 }
 
-impl<'a, E: Env, P: Policy<E>> Policy<E> for CachedPolicy<'a, E, P> {
+impl<'a, E: Env, P: Policy<E>> Policy<E> for PolicyWithCache<'a, E, P> {
     fn eval(&mut self, state: &Vec<f32>) -> (Vec<f32>, f32) {
         let cache_key = state.iter().map(|&f| OrderedFloat(f)).collect();
         match self.cache.get(&cache_key) {
@@ -36,7 +44,7 @@ impl<'a, E: Env, P: Policy<E>> Policy<E> for CachedPolicy<'a, E, P> {
 }
 
 fn run_game<E: Env, P: Policy<E>, R: Rng>(
-    cfg: &RunConfig,
+    cfg: &RolloutConfig,
     policy: &mut P,
     rng: &mut R,
     states: &mut Vec<f32>,
@@ -95,38 +103,54 @@ fn run_game<E: Env, P: Policy<E>, R: Rng>(
     }
 }
 
+pub fn eval<E: Env, P: Policy<E> + NNPolicy<E>, R: Rng>(
+    cfg: &EvaluationConfig,
+    rng: &mut R,
+    policy: &mut P,
+) -> f32 {
+    let mut game = E::new();
+    let mut player = game.player();
+    let mut wins = 0.0;
+    for i_game in 0..cfg.num_games {
+        game = E::new();
+        let mut mcts = MCTS::<E, P>::with_capacity(cfg.capacity, policy);
+        loop {
+            let action = if game.player() == player {
+                mcts.explore_n(cfg.num_explores);
+                mcts.best_action()
+            } else {
+                let actions: Vec<E::Action> = game.iter_actions().collect();
+                *actions.choose(rng).unwrap()
+            };
+            mcts.step_action(&action);
+            if game.step(&action) {
+                break;
+            }
+        }
+        if game.reward(player) == 1.0 {
+            wins += 1.0;
+        }
+    }
+    wins / cfg.num_games as f32
+}
+
 pub fn gather_experience<E: Env, P: Policy<E>, R: Rng>(
-    cfg: &RunConfig,
+    cfg: &RolloutConfig,
     policy: &mut P,
     rng: &mut R,
 ) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
     let mut states: Vec<f32> = Vec::with_capacity(cfg.steps_per_epoch * 2);
     let mut pis: Vec<f32> = Vec::with_capacity(cfg.steps_per_epoch * 2);
     let mut vs: Vec<f32> = Vec::with_capacity(cfg.steps_per_epoch * 2);
-    let mut cached_policy = CachedPolicy {
+    let mut cached_policy = PolicyWithCache {
         policy,
         cache: HashMap::with_capacity(cfg.steps_per_epoch * 2),
         _marker: PhantomData,
     };
+
     while vs.len() < cfg.steps_per_epoch {
         run_game(cfg, &mut cached_policy, rng, &mut states, &mut pis, &mut vs);
-        // run_game(cfg, policy, rng, &mut states, &mut pis, &mut vs);
-        // println!("{:?}", states.len());
     }
 
-    // let states_t = Tensor::stack(&states, 0);
-    // assert!(states_t.size()[0] == states.len() as i64);
-    // assert!(states_t.size()[1..] == states[0].size());
-
-    // let pis_t = Tensor::stack(&pis, 0);
-    // assert!(pis_t.size()[0] == pis.len() as i64);
-    // assert!(pis_t.size()[1..] == pis[0].size());
-
-    // let vs_t = Tensor::of_slice(&vs).unsqueeze(1);
-    // assert!(vs_t.size().len() == 2);
-    // assert!(vs_t.size()[0] == vs.len() as i64);
-    // assert!(vs_t.size()[1] == 1);
-
-    // (states_t, pis_t, vs_t)
     (states, pis, vs)
 }

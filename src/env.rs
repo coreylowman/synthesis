@@ -1,5 +1,3 @@
-use rand::rngs::StdRng;
-
 pub trait HasTurnOrder: Eq + Clone + Copy + std::fmt::Debug {
     fn prev(&self) -> Self;
     fn next(&self) -> Self;
