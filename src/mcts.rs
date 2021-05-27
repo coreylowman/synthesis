@@ -1,7 +1,7 @@
 use crate::env::Env;
 use std::time::{Duration, Instant};
 
-const C_PUCT: f32 = 1.0;
+const C_PUCT: f32 = 4.0;
 
 pub struct Node<E: Env> {
     pub parent: usize,
@@ -144,9 +144,8 @@ impl<'a, E: Env, P: Policy<E>> MCTS<'a, E, P> {
         loop {
             // assert!(node_id < self.nodes.len());
             let node = &mut self.nodes[node_id - self.root];
-            let v = node.value;
             if node.terminal {
-                // let (_, value) = self.policy.eval(&node.env);
+                let v = node.value;
                 self.backprop(node_id, v);
                 return;
             } else if node.expanded {
@@ -194,7 +193,8 @@ impl<'a, E: Env, P: Policy<E>> MCTS<'a, E, P> {
         let mut best_value = -std::f32::INFINITY;
         for &(action, child_id) in &node.children {
             let child = &self.nodes[child_id - self.root];
-            let value = child.cum_value / child.num_visits
+            // NOTE: -child.cum_value because child.cum_value is in opponent's win pct, so we want to convert to ours
+            let value = -child.cum_value / child.num_visits
                 + C_PUCT * node.action_probs[action.into()] * visits / (1.0 + child.num_visits);
             if value > best_value {
                 best_child_id = child_id;

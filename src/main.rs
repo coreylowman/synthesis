@@ -14,6 +14,7 @@ use crate::runner::{eval, gather_experience, EvaluationConfig, RolloutConfig};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std::default::Default;
+use std::time::Instant;
 use tch::nn::{Adam, OptimizerConfig, VarStore};
 
 #[derive(Debug)]
@@ -25,6 +26,7 @@ struct TrainConfig {
     pub batch_size: i64,
     pub device: tch::Device,
     pub kind: tch::Kind,
+    pub eval: Option<Vec<tch::Tensor>>,
 }
 
 fn train<E: Env, P: Policy<E> + NNPolicy<E>>(
@@ -47,14 +49,25 @@ fn train<E: Env, P: Policy<E> + NNPolicy<E>>(
     println!("{:?}", train_cfg);
     println!("{:?}", evaluation_cfg);
 
-    let win_pct = {
+    let start = Instant::now();
+
+    let (win_pct, acc) = {
         let _guard = tch::no_grad_guard();
-        eval(evaluation_cfg, &mut policy)
+        let acc = train_cfg.eval.as_ref().map_or(None, |ts| {
+            let (_pis, vs) = policy.forward(&ts[0]);
+            Some(f32::from(&(vs - &ts[1]).square().mean(train_cfg.kind)))
+        });
+        (eval(evaluation_cfg, &mut policy), acc)
     };
-    println!("Init win pct {:.3}%", win_pct * 100.0);
+    println!(
+        "{:?} Init win pct={:.3}% eval mse={:?}",
+        start.elapsed(),
+        win_pct * 100.0,
+        acc
+    );
 
     for i_iter in 0..train_cfg.num_iterations {
-        println!("Iteration {}...", i_iter);
+        // println!("Iteration {}...", i_iter);
 
         // gather data
         let (states, target_pis, target_vs) = {
@@ -81,7 +94,7 @@ fn train<E: Env, P: Policy<E> + NNPolicy<E>>(
                 let (pi, v) = policy.forward(&state);
 
                 let pi_loss = -(target_pi * pi.log()).sum(train_cfg.kind) / train_cfg.batch_size;
-                let v_loss = v.mse_loss(&target_v, tch::Reduction::Mean);
+                let v_loss = (v - target_v).square().mean(train_cfg.kind);
                 // println!("{:?} {:?}", pi_loss, v_loss);
 
                 let loss = &pi_loss + &v_loss;
@@ -90,17 +103,27 @@ fn train<E: Env, P: Policy<E> + NNPolicy<E>>(
                 pi_eloss += f32::from(&pi_loss);
                 v_eloss += f32::from(&v_loss);
             }
-            println!(
-                "\tEpoch {} pi_loss={} v_loss={}",
-                i_epoch, pi_eloss, v_eloss
-            );
+            // println!(
+            //     "\tEpoch {} pi_loss={} v_loss={}",
+            //     i_epoch, pi_eloss, v_eloss
+            // );
         }
 
-        let win_pct = {
+        let (win_pct, acc) = {
             let _guard = tch::no_grad_guard();
-            eval(evaluation_cfg, &mut policy)
+            let acc = train_cfg.eval.as_ref().map_or(None, |ts| {
+                let (_pis, vs) = policy.forward(&ts[0]);
+                Some(f32::from(&(vs - &ts[1]).square().mean(train_cfg.kind)))
+            });
+            (eval(evaluation_cfg, &mut policy), acc)
         };
-        println!("Iteration {} strength={:.3}%.", i_iter, win_pct * 100.0);
+        println!(
+            "{:?} Iteration {} win pct={:.3}% eval mse={:?}",
+            start.elapsed(),
+            i_iter,
+            win_pct * 100.0,
+            acc
+        );
     }
 }
 
@@ -109,22 +132,23 @@ fn main() {
     tch::manual_seed(seed as i64);
     let mut rng = StdRng::seed_from_u64(seed);
 
-    println!("Connect4 {:?}", std::mem::size_of::<Connect4>());
-    println!("Box<Connect4> {:?}", std::mem::size_of::<Box<Connect4>>());
-    println!(
-        "Connect4::ActionIterator {:?}",
-        std::mem::size_of::<<Connect4 as Env>::ActionIterator>()
-    );
-    println!("Node<Connect4> {:?}", std::mem::size_of::<Node<Connect4>>());
+    let path = std::path::Path::new("./connect-4.npz");
+    assert!(path.exists());
+    let named_tensors = tch::Tensor::read_npz(path).unwrap();
+    let tensors = named_tensors
+        .iter()
+        .map(|(_n, t)| t.to_kind(tch::Kind::Float))
+        .collect();
 
     let train_cfg = TrainConfig {
         lr: 1e-3,
         weight_decay: 1e-5,
-        num_iterations: 10,
-        num_epochs: 32,
+        num_iterations: 100,
+        num_epochs: 16,
         batch_size: 256,
         kind: tch::Kind::Float,
         device: tch::Device::Cpu,
+        eval: Some(tensors),
     };
 
     let rollout_cfg = RolloutConfig {
@@ -132,13 +156,13 @@ fn main() {
         num_explores: 100,
         temperature: 1.0,
         sample_action: true,
-        steps_per_epoch: (train_cfg.batch_size * 10) as usize,
+        steps: 3200,
     };
 
     let evaluation_cfg = EvaluationConfig {
         capacity: rollout_cfg.capacity,
         num_explores: rollout_cfg.num_explores,
-        num_games: 100,
+        num_games: 50,
         seed: 10,
     };
 

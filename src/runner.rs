@@ -1,4 +1,4 @@
-use crate::env::Env;
+use crate::env::{Env, HasTurnOrder};
 use crate::mcts::{Policy, MCTS};
 use crate::model::NNPolicy;
 use ordered_float::OrderedFloat;
@@ -15,7 +15,7 @@ pub struct RolloutConfig {
     pub num_explores: usize,
     pub temperature: f32,
     pub sample_action: bool,
-    pub steps_per_epoch: usize,
+    pub steps: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -109,7 +109,7 @@ fn run_game<E: Env, P: Policy<E>, R: Rng>(
 pub fn eval<E: Env, P: Policy<E> + NNPolicy<E>>(cfg: &EvaluationConfig, policy: &mut P) -> f32 {
     let mut rng = StdRng::seed_from_u64(cfg.seed);
     let mut game = E::new();
-    let player = game.player();
+    let mut player = game.player();
     let mut wins = 0.0;
     for _i_game in 0..cfg.num_games {
         game = E::new();
@@ -130,6 +130,8 @@ pub fn eval<E: Env, P: Policy<E> + NNPolicy<E>>(cfg: &EvaluationConfig, policy: 
         if game.reward(player) == 1.0 {
             wins += 1.0;
         }
+
+        player = player.next();
     }
     wins / cfg.num_games as f32
 }
@@ -139,16 +141,16 @@ pub fn gather_experience<E: Env, P: Policy<E>, R: Rng>(
     policy: &mut P,
     rng: &mut R,
 ) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
-    let mut states: Vec<f32> = Vec::with_capacity(cfg.steps_per_epoch * 2);
-    let mut pis: Vec<f32> = Vec::with_capacity(cfg.steps_per_epoch * 2);
-    let mut vs: Vec<f32> = Vec::with_capacity(cfg.steps_per_epoch * 2);
+    let mut states: Vec<f32> = Vec::with_capacity(cfg.steps * 2);
+    let mut pis: Vec<f32> = Vec::with_capacity(cfg.steps * 2);
+    let mut vs: Vec<f32> = Vec::with_capacity(cfg.steps * 2);
     let mut cached_policy = PolicyWithCache {
         policy,
-        cache: HashMap::with_capacity(cfg.steps_per_epoch * 2),
+        cache: HashMap::with_capacity(cfg.steps * 2),
         _marker: PhantomData,
     };
 
-    while vs.len() < cfg.steps_per_epoch {
+    while vs.len() < cfg.steps {
         run_game(cfg, &mut cached_policy, rng, &mut states, &mut pis, &mut vs);
     }
 
