@@ -7,5 +7,10 @@ edition = "2018"
 [dependencies]
 tch = "0.4.1"
 rand = "0.8.3"
-torch-sys = "0.4.1"
 ordered-float = "2.5.0"
+serde_json = "1.0.64"
+serde = { version = "1.0.126", features = ["derive"] }
+chrono = "0.4.3"
+log = "0.4.14"
+env_logger = "0.8.3"
+torch-sys = "0.4.1"

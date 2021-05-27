@@ -8,8 +8,9 @@ use rand::{
 };
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct RolloutConfig {
     pub capacity: usize,
     pub num_explores: usize,
@@ -18,7 +19,7 @@ pub struct RolloutConfig {
     pub steps: usize,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct EvaluationConfig {
     pub capacity: usize,
     pub num_explores: usize,
