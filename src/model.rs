@@ -16,12 +16,14 @@ pub trait NNPolicy<E: Env> {
 
 pub struct PolicyStorage {
     pub store: HashMap<String, VarStore>,
+    pub names: Vec<String>,
 }
 
 impl PolicyStorage {
     pub fn with_capacity(n: usize) -> Self {
         Self {
             store: HashMap::with_capacity(n),
+            names: Vec::with_capacity(n),
         }
     }
 
@@ -29,10 +31,19 @@ impl PolicyStorage {
         let mut stored_vs = VarStore::new(tch::Device::Cpu);
         stored_vs.copy(vs).unwrap();
         self.store.insert(name.clone(), stored_vs);
+        self.names.push(name.clone());
     }
 
     pub fn get<E: Env, P: Policy<E> + NNPolicy<E>>(&self, name: &String) -> P {
         P::new(self.store.get(name).unwrap())
+    }
+
+    pub fn last(&self, n: usize) -> &[String] {
+        if self.names.len() < n {
+            &self.names[..]
+        } else {
+            &self.names[(self.names.len() - n)..]
+        }
     }
 }
 
@@ -40,36 +51,38 @@ pub struct ConvNet<E: Env> {
     state_dims: Vec<i64>,
     conv_1: nn::Conv2D,
     fc_1: nn::Linear,
-    p: nn::Linear,
-    v: nn::Linear,
+    fc_2: nn::Linear,
+    p_1: nn::Linear,
+    p_2: nn::Linear,
+    v_1: nn::Linear,
+    v_2: nn::Linear,
     _marker: PhantomData<E>,
 }
 
 impl<E: Env> NNPolicy<E> for ConvNet<E> {
     fn new(vs: &nn::VarStore) -> Self {
-        let cfg = nn::ConvConfig {
-            padding: 1,
-            ..Default::default()
-        };
         let root = &vs.root();
         let mut state_dims = E::get_state_dims();
         assert!(state_dims.len() == 3);
         state_dims.insert(0, 1);
         Self {
-            conv_1: nn::conv2d(root / "conv_1", state_dims[1], 32, 3, cfg),
+            conv_1: nn::conv2d(root / "conv_1", state_dims[1], 256, 4, Default::default()),
             fc_1: nn::linear(
                 root / "fc_1",
-                32 * state_dims[2] * state_dims[3],
+                256 * (state_dims[2] - 3) * (state_dims[3] - 3),
                 64,
                 Default::default(),
             ),
-            p: nn::linear(
-                root / "p",
+            fc_2: nn::linear(root / "fc_2", 64, 64, Default::default()),
+            p_1: nn::linear(root / "p_1", 64, 64, Default::default()),
+            p_2: nn::linear(
+                root / "p_2",
                 64,
                 E::MAX_NUM_ACTIONS as i64,
                 Default::default(),
             ),
-            v: nn::linear(root / "v", 64, 1, Default::default()),
+            v_1: nn::linear(root / "v_1", 64, 64, Default::default()),
+            v_2: nn::linear(root / "v_2", 64, 1, Default::default()),
             state_dims,
             _marker: PhantomData,
         }
@@ -81,10 +94,12 @@ impl<E: Env> NNPolicy<E> for ConvNet<E> {
             .relu()
             .flat_view()
             .apply(&self.fc_1)
+            .relu()
+            .apply(&self.fc_2)
             .relu();
         (
-            xs.apply(&self.p).softmax(-1, tch::Kind::Float),
-            xs.apply(&self.v).tanh(),
+            xs.apply(&self.p_1).relu().apply(&self.p_2),
+            xs.apply(&self.v_1).relu().apply(&self.v_2).tanh(),
         )
     }
 }
@@ -92,7 +107,8 @@ impl<E: Env> NNPolicy<E> for ConvNet<E> {
 impl<E: Env> Policy<E> for ConvNet<E> {
     fn eval(&mut self, xs: &Vec<f32>) -> (Vec<f32>, f32) {
         let t = tensor(&xs, &self.state_dims, tch::Kind::Float);
-        let (policy, value) = self.forward(&t);
+        let (logits, value) = self.forward(&t);
+        let policy = logits.softmax(-1, tch::Kind::Float);
         let policy = Vec::<f32>::from(&policy);
         // assert!(policy.len() == E::MAX_NUM_ACTIONS);
         let value = f32::from(&value);

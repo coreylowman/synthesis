@@ -15,6 +15,7 @@ use crate::runner::{eval, gather_experience, RolloutConfig};
 use crate::utils::*;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
+use runner::ReplayBuffer;
 use serde::{Deserialize, Serialize};
 use std::default::Default;
 use tch::{
@@ -29,6 +30,7 @@ struct TrainConfig {
     pub num_iterations: usize,
     pub num_epochs: usize,
     pub batch_size: i64,
+    pub buffer_size: usize,
     pub seed: u64,
     pub logs: &'static str,
 }
@@ -49,6 +51,7 @@ fn train<E: Env, P: Policy<E> + NNPolicy<E>>(train_cfg: &TrainConfig, rollout_cf
     let mut rng = StdRng::seed_from_u64(train_cfg.seed);
 
     let mut policies = PolicyStorage::with_capacity(train_cfg.num_iterations);
+    let mut buffer = ReplayBuffer::<E>::new(train_cfg.buffer_size);
 
     let vs = VarStore::new(tch::Device::Cpu);
     let mut policy = P::new(&vs);
@@ -64,38 +67,50 @@ fn train<E: Env, P: Policy<E> + NNPolicy<E>>(train_cfg: &TrainConfig, rollout_cf
     vs.save(models_dir.join(name)).unwrap();
     for i_iter in 0..train_cfg.num_iterations {
         // gather data
-        let (states, target_pis, target_vs) = {
+        {
             let _guard = tch::no_grad_guard();
-            gather_experience::<E, P, StdRng>(rollout_cfg, &mut policy, &mut rng)
-        };
+            gather_experience::<E, P, StdRng>(rollout_cfg, &mut policy, &mut rng, &mut buffer);
+        }
 
         // convert to tensors
-        dims[0] = target_vs.len() as i64;
-        let states = tensor(&states, &dims, Kind::Float);
-        let target_pis = tensor(&target_pis, &[dims[0], num_acs], Kind::Float);
-        let target_vs = tensor(&target_vs, &[dims[0], 1], Kind::Float);
+        dims[0] = buffer.vs.len() as i64;
+        let states = tensor(&buffer.states, &dims, Kind::Float);
+        let target_pis = tensor(&buffer.pis, &[dims[0], num_acs], Kind::Float);
+        let target_vs = tensor(&buffer.vs, &[dims[0], 1], Kind::Float);
 
         // train
         for _i_epoch in 0..train_cfg.num_epochs {
             let sampler =
                 BatchRandSampler::new(&states, &target_pis, &target_vs, train_cfg.batch_size, true);
 
+            let mut epoch_loss = [0.0, 0.0];
             for (state, target_pi, target_v) in sampler {
-                let (pi, v) = policy.forward(&state);
+                let legal_mask = target_pi.greater1(&tch::Tensor::zeros_like(&target_pi));
+                let illegal_value = -1e10f32 * tch::Tensor::ones_like(&target_pi);
 
-                let pi_loss = -(target_pi * pi.log()).sum(Kind::Float) / train_cfg.batch_size;
+                let (logits, v) = policy.forward(&state);
+
+                let legal_logits = logits.where1(&legal_mask, &illegal_value);
+                let log_pi = legal_logits.log_softmax(-1, Kind::Float);
+
+                // let pi_loss = -(target_pi * log_pi).sum(Kind::Float) / train_cfg.batch_size;
+                let pi_loss = -(target_pi * log_pi).mean(Kind::Float);
                 let v_loss = (v - target_v).square().mean(Kind::Float);
 
                 let loss = &pi_loss + &v_loss;
                 opt.backward_step(&loss);
+
+                epoch_loss[0] += f32::from(&pi_loss);
+                epoch_loss[1] += f32::from(&v_loss);
             }
+            println!("{} {:?}", _i_epoch, epoch_loss);
         }
 
         // evaluate against previous models
         {
             let _guard = tch::no_grad_guard();
             name = format!("model_{}.ot", i_iter + 1);
-            for old_name in policies.store.keys() {
+            for old_name in policies.last(10) {
                 let mut old_p = policies.get(old_name);
                 let white_reward = eval(rollout_cfg, &mut policy, &mut old_p);
                 let black_reward = eval(rollout_cfg, &mut old_p, &mut policy);
@@ -117,6 +132,7 @@ fn main() {
         num_iterations: 100,
         num_epochs: 16,
         batch_size: 256,
+        buffer_size: 100_000,
         seed: 0,
         logs: "./logs",
     };

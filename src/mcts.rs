@@ -25,6 +25,11 @@ impl<E: Env> Node<E> {
         value: f32,
     ) -> Self {
         let actions = env.iter_actions();
+        let value = if is_over {
+            env.reward(env.player())
+        } else {
+            value
+        };
         Node {
             parent: parent_id,
             env,

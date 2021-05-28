@@ -16,6 +16,52 @@ pub struct RolloutConfig {
     pub steps: usize,
 }
 
+pub struct ReplayBuffer<E: Env> {
+    capacity: usize,
+    state_size: usize,
+    pi_size: usize,
+    v_size: usize,
+    pub states: Vec<f32>,
+    pub pis: Vec<f32>,
+    pub vs: Vec<f32>,
+    _marker: PhantomData<E>,
+}
+
+impl<E: Env> ReplayBuffer<E> {
+    pub fn new(n: usize) -> Self {
+        let state_size = E::get_state_dims().iter().fold(1, |a, v| a * v) as usize;
+        let state_capacity = n * state_size;
+        let pi_capacity = n * E::MAX_NUM_ACTIONS;
+        let v_capacity = n;
+        Self {
+            capacity: n,
+            state_size,
+            pi_size: E::MAX_NUM_ACTIONS,
+            v_size: 1,
+            states: Vec::with_capacity(state_capacity),
+            pis: Vec::with_capacity(pi_capacity),
+            vs: Vec::with_capacity(v_capacity),
+            _marker: PhantomData,
+        }
+    }
+
+    pub fn add(&mut self, state: &Vec<f32>, pi: &Vec<f32>, v: f32) {
+        self.states.extend(state);
+        self.pis.extend(pi);
+        self.vs.push(v);
+    }
+
+    pub fn make_room(&mut self, n: usize) {
+        if self.vs.len() + n > self.capacity {
+            let num_to_drop = self.vs.len() + n - self.capacity;
+            drop(self.states.drain(0..(num_to_drop * self.state_size)));
+            drop(self.pis.drain(0..(num_to_drop * self.pi_size)));
+            drop(self.vs.drain(0..(num_to_drop * self.v_size)));
+        }
+        assert!(self.vs.len() + n <= self.capacity);
+    }
+}
+
 struct PolicyWithCache<'a, E: Env, P: Policy<E>> {
     pub policy: &'a mut P,
     pub cache: HashMap<Vec<OrderedFloat<f32>>, (Vec<f32>, f32)>,
@@ -40,11 +86,9 @@ fn run_game<E: Env, P: Policy<E>, R: Rng>(
     cfg: &RolloutConfig,
     policy: &mut P,
     rng: &mut R,
-    states: &mut Vec<f32>,
-    pis: &mut Vec<f32>,
-    vs: &mut Vec<f32>,
+    buffer: &mut ReplayBuffer<E>,
 ) {
-    let start_i = vs.len();
+    let start_i = buffer.vs.len();
     let mut mcts = MCTS::<E, P>::with_capacity(cfg.capacity, policy);
     let mut game = E::new();
     let start_player = game.player();
@@ -70,9 +114,7 @@ fn run_game<E: Env, P: Policy<E>, R: Rng>(
             policy[i] /= total;
         }
 
-        states.extend(mcts.root_state());
-        pis.extend(policy.iter());
-        vs.push(0.0);
+        buffer.add(mcts.root_state(), &policy, 0.0);
 
         let action = if cfg.sample_action {
             let dist = WeightedIndex::new(&policy).unwrap();
@@ -90,8 +132,8 @@ fn run_game<E: Env, P: Policy<E>, R: Rng>(
     }
 
     let mut r = game.reward(start_player);
-    for i in start_i..vs.len() {
-        vs[i] = r;
+    for i in start_i..buffer.vs.len() {
+        buffer.vs[i] = r;
         r *= -1.0;
     }
 }
@@ -126,19 +168,16 @@ pub fn gather_experience<E: Env, P: Policy<E>, R: Rng>(
     cfg: &RolloutConfig,
     policy: &mut P,
     rng: &mut R,
-) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
-    let mut states: Vec<f32> = Vec::with_capacity(cfg.steps * 2);
-    let mut pis: Vec<f32> = Vec::with_capacity(cfg.steps * 2);
-    let mut vs: Vec<f32> = Vec::with_capacity(cfg.steps * 2);
+    buffer: &mut ReplayBuffer<E>,
+) {
     let mut cached_policy = PolicyWithCache {
         policy,
         cache: HashMap::with_capacity(cfg.steps * 2),
         _marker: PhantomData,
     };
 
-    while vs.len() < cfg.steps {
-        run_game(cfg, &mut cached_policy, rng, &mut states, &mut pis, &mut vs);
+    buffer.make_room(cfg.steps);
+    while buffer.vs.len() < cfg.steps {
+        run_game(cfg, &mut cached_policy, rng, buffer);
     }
-
-    (states, pis, vs)
 }
