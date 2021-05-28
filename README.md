@@ -11,7 +11,7 @@ TODOS
 - [x] use visit count to select moves
 - [x] Runner using nn params and mcts
 - [x] main train loop of run games -> sample -> train
-- [ ] save checkpoints
+- [x] save checkpoints
 - [x] eval checkpoints
 - [ ] dirichlet noise for exploration
 - [x] move RNG initialization outside of mcts constructor
@@ -21,3 +21,6 @@ TODOS
 - [x] compare NN against optimal dataset
 - [ ] calculate c_puct instead of hardcoding
 - [ ] recalculate best child while backproping
+- [ ] multiple rollout processes
+- [ ] multiple threads for MCTS
+- [x] self play ELO

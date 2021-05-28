@@ -11,13 +11,16 @@ use crate::data::{tensor, BatchRandSampler};
 use crate::env::Env;
 use crate::mcts::Policy;
 use crate::model::{ConvNet, NNPolicy};
-use crate::runner::{eval, gather_experience, EvaluationConfig, RolloutConfig};
-use crate::utils::{git_diff, git_hash, save, save_str, train_dir};
+use crate::runner::{eval, gather_experience, RolloutConfig};
+use crate::utils::{
+    add_pgn_result, calculate_ratings, git_diff, git_hash, save, save_str, train_dir,
+};
 use env_logger;
 use log::{debug, info, trace};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::default::Default;
 use std::io::Write;
 use tch::{
@@ -36,22 +39,46 @@ struct TrainConfig {
     pub logs: &'static str,
 }
 
+struct PolicyStorage {
+    pub store: HashMap<String, VarStore>,
+}
+
+impl PolicyStorage {
+    fn with_capacity(n: usize) -> Self {
+        Self {
+            store: HashMap::with_capacity(n),
+        }
+    }
+
+    fn insert(&mut self, name: &String, vs: &VarStore) {
+        let mut stored_vs = VarStore::new(tch::Device::Cpu);
+        stored_vs.copy(vs).unwrap();
+        self.store.insert(name.clone(), stored_vs);
+    }
+
+    fn get<E: Env, P: Policy<E> + NNPolicy<E>>(&self, name: &String) -> P {
+        P::new(self.store.get(name).unwrap())
+    }
+}
+
 fn train<E: Env, P: Policy<E> + NNPolicy<E>>(
     train_cfg: &TrainConfig,
     rollout_cfg: &RolloutConfig,
-    evaluation_cfg: &EvaluationConfig,
     solved: Option<Vec<tch::Tensor>>,
 ) {
     let train_dir = train_dir(train_cfg.logs);
     save(&train_dir, "train_cfg.json", train_cfg);
     save(&train_dir, "rollout_cfg.json", rollout_cfg);
-    save(&train_dir, "evaluation_cfg.json", evaluation_cfg);
     save_str(&train_dir, "git_hash", &git_hash());
     save_str(&train_dir, "git_diff.txt", &git_diff());
     let mut progress = std::fs::File::create(&train_dir.join("progress.csv")).expect("?");
+    let pgn_path = train_dir.join("results.pgn");
+    let mut pgn = std::fs::File::create(&pgn_path).expect("?");
 
     tch::manual_seed(train_cfg.seed as i64);
     let mut rng = StdRng::seed_from_u64(train_cfg.seed);
+
+    let mut policies = PolicyStorage::with_capacity(train_cfg.num_iterations);
 
     let vs = VarStore::new(tch::Device::Cpu);
     let mut policy = P::new(&vs);
@@ -65,19 +92,21 @@ fn train<E: Env, P: Policy<E> + NNPolicy<E>>(
 
     info!("{:?}", rollout_cfg);
     info!("{:?}", train_cfg);
-    info!("{:?}", evaluation_cfg);
 
-    let (win_pct, acc) = {
+    let acc = {
         let _guard = tch::no_grad_guard();
-        let acc = solved.as_ref().map_or(None, |ts| {
+        solved.as_ref().map_or(None, |ts| {
             let (_pis, vs) = policy.forward(&ts[0]);
             Some(f32::from(&(vs - &ts[1]).square().mean(Kind::Float)))
-        });
-        (eval(evaluation_cfg, &mut policy), acc)
+        })
     };
-    info!("Init win pct={:.3}% eval mse={:?}", win_pct * 100.0, acc);
-    write!(progress, "0,{},{:?}\n", win_pct, acc).expect("");
+    info!("Init eval mse={:?}", acc);
+    write!(progress, "0,{:?}\n", acc).expect("");
 
+    let mut num_steps_trained = 0;
+    let mut name = String::from("model_0.ot");
+    policies.insert(&name, &vs);
+    vs.save(train_dir.join(name)).unwrap();
     for i_iter in 0..train_cfg.num_iterations {
         debug!("Iteration {}...", i_iter);
 
@@ -114,6 +143,7 @@ fn train<E: Env, P: Policy<E> + NNPolicy<E>>(
 
                 pi_eloss += f32::from(&pi_loss);
                 v_eloss += f32::from(&v_loss);
+                num_steps_trained += train_cfg.batch_size;
             }
             debug!(
                 "\tEpoch {} pi_loss={} v_loss={}",
@@ -121,21 +151,32 @@ fn train<E: Env, P: Policy<E> + NNPolicy<E>>(
             );
         }
 
-        let (win_pct, acc) = {
+        // evaluate against previous models
+        {
             let _guard = tch::no_grad_guard();
-            let acc = solved.as_ref().map_or(None, |ts| {
+            name = format!("model_{}.ot", i_iter + 1);
+            for old_name in policies.store.keys() {
+                let mut old_p = policies.get(old_name);
+                let white_reward = eval(rollout_cfg, &mut policy, &mut old_p);
+                let black_reward = eval(rollout_cfg, &mut old_p, &mut policy);
+                add_pgn_result(&mut pgn, &name, old_name, white_reward);
+                add_pgn_result(&mut pgn, old_name, &name, black_reward);
+            }
+            calculate_ratings(&train_dir).expect("Rating calculation failed");
+        }
+
+        policies.insert(&name, &vs);
+        vs.save(train_dir.join(name)).unwrap();
+
+        let acc = {
+            let _guard = tch::no_grad_guard();
+            solved.as_ref().map_or(None, |ts| {
                 let (_pis, vs) = policy.forward(&ts[0]);
                 Some(f32::from(&(vs - &ts[1]).square().mean(Kind::Float)))
-            });
-            (eval(evaluation_cfg, &mut policy), acc)
+            })
         };
-        info!(
-            "Iteration {} win pct={:.3}% eval mse={:?}",
-            i_iter,
-            win_pct * 100.0,
-            acc
-        );
-        write!(progress, "{},{},{:?}\n", i_iter + 1, win_pct, acc).expect("");
+        info!("Iteration {} eval mse={:?}", i_iter, acc);
+        write!(progress, "{},{:?}\n", i_iter + 1, acc).expect("");
     }
 }
 
@@ -170,12 +211,5 @@ fn main() {
         steps: 3200,
     };
 
-    let evaluation_cfg = EvaluationConfig {
-        capacity: rollout_cfg.capacity,
-        num_explores: rollout_cfg.num_explores,
-        num_games: 50,
-        seed: 10,
-    };
-
-    train::<Connect4, ConvNet<Connect4>>(&train_cfg, &rollout_cfg, &evaluation_cfg, solved);
+    train::<Connect4, ConvNet<Connect4>>(&train_cfg, &rollout_cfg, solved);
 }

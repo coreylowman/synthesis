@@ -1,14 +1,11 @@
-use crate::env::{Env, HasTurnOrder};
+use crate::env::Env;
 use crate::mcts::{Policy, MCTS};
 use crate::model::NNPolicy;
 use ordered_float::OrderedFloat;
-use rand::{
-    distributions::Distribution, distributions::WeightedIndex, rngs::StdRng, seq::SliceRandom, Rng,
-    SeedableRng,
-};
+use rand::{distributions::Distribution, distributions::WeightedIndex, Rng};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct RolloutConfig {
@@ -17,14 +14,6 @@ pub struct RolloutConfig {
     pub temperature: f32,
     pub sample_action: bool,
     pub steps: usize,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct EvaluationConfig {
-    pub capacity: usize,
-    pub num_explores: usize,
-    pub num_games: usize,
-    pub seed: u64,
 }
 
 struct PolicyWithCache<'a, E: Env, P: Policy<E>> {
@@ -107,34 +96,30 @@ fn run_game<E: Env, P: Policy<E>, R: Rng>(
     }
 }
 
-pub fn eval<E: Env, P: Policy<E> + NNPolicy<E>>(cfg: &EvaluationConfig, policy: &mut P) -> f32 {
-    let mut rng = StdRng::seed_from_u64(cfg.seed);
+pub fn eval<E: Env, P: Policy<E> + NNPolicy<E>>(
+    cfg: &RolloutConfig,
+    policy_a: &mut P,
+    policy_b: &mut P,
+) -> f32 {
     let mut game = E::new();
-    let mut player = game.player();
-    let mut wins = 0.0;
-    for _i_game in 0..cfg.num_games {
-        game = E::new();
-        let mut mcts = MCTS::<E, P>::with_capacity(cfg.capacity, policy);
-        loop {
-            let action = if game.player() == player {
-                mcts.explore_n(cfg.num_explores);
-                mcts.best_action()
-            } else {
-                let actions: Vec<E::Action> = game.iter_actions().collect();
-                *actions.choose(&mut rng).unwrap()
-            };
-            mcts.step_action(&action);
-            if game.step(&action) {
-                break;
-            }
+    let player = game.player();
+    let mut mcts_a = MCTS::<E, P>::with_capacity(cfg.capacity, policy_a);
+    let mut mcts_b = MCTS::<E, P>::with_capacity(cfg.capacity, policy_b);
+    loop {
+        let action = if game.player() == player {
+            mcts_a.explore_n(cfg.num_explores);
+            mcts_a.best_action()
+        } else {
+            mcts_b.explore_n(cfg.num_explores);
+            mcts_b.best_action()
+        };
+        mcts_a.step_action(&action);
+        mcts_b.step_action(&action);
+        if game.step(&action) {
+            break;
         }
-        if game.reward(player) == 1.0 {
-            wins += 1.0;
-        }
-
-        player = player.next();
     }
-    wins / cfg.num_games as f32
+    game.reward(player)
 }
 
 pub fn gather_experience<E: Env, P: Policy<E>, R: Rng>(
