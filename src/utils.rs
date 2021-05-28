@@ -7,9 +7,7 @@ use std::process::{Command, Stdio};
 
 pub fn train_dir(root: &'static str) -> PathBuf {
     let path = Path::new(root).join(Local::now().format("train_%m-%d-%YT%H-%M-%SZ").to_string());
-    if !path.exists() {
-        std::fs::create_dir_all(&path).unwrap();
-    }
+    std::fs::create_dir_all(&path).unwrap();
     path
 }
 
