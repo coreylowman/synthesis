@@ -11,11 +11,10 @@ use crate::data::{tensor, BatchRandSampler};
 use crate::env::Env;
 use crate::mcts::Policy;
 use crate::model::{ConvNet, NNPolicy, PolicyStorage};
-use crate::runner::{eval, gather_experience, RolloutConfig};
+use crate::runner::{eval, gather_experience, ReplayBuffer, RolloutConfig};
 use crate::utils::*;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use runner::ReplayBuffer;
 use serde::{Deserialize, Serialize};
 use std::default::Default;
 use tch::{
@@ -103,14 +102,14 @@ fn train<E: Env, P: Policy<E> + NNPolicy<E>>(train_cfg: &TrainConfig, rollout_cf
                 epoch_loss[0] += f32::from(&pi_loss);
                 epoch_loss[1] += f32::from(&v_loss);
             }
-            println!("{} {:?}", _i_epoch, epoch_loss);
+            // println!("{} {:?}", _i_epoch, epoch_loss);
         }
 
         // evaluate against previous models
         {
             let _guard = tch::no_grad_guard();
             name = format!("model_{}.ot", i_iter + 1);
-            for old_name in policies.last(10) {
+            for old_name in policies.last(50) {
                 let mut old_p = policies.get(old_name);
                 let white_reward = eval(rollout_cfg, &mut policy, &mut old_p);
                 let black_reward = eval(rollout_cfg, &mut old_p, &mut policy);
@@ -132,7 +131,7 @@ fn main() {
         num_iterations: 100,
         num_epochs: 16,
         batch_size: 256,
-        buffer_size: 100_000,
+        buffer_size: 16_000,
         seed: 0,
         logs: "./logs",
     };
@@ -142,7 +141,9 @@ fn main() {
         num_explores: 100,
         temperature: 1.0,
         sample_action: true,
-        steps: 3200,
+        steps: 3_200,
+        alpha: 1.0,
+        noisy_explore: false,
     };
 
     train::<Connect4, ConvNet<Connect4>>(&train_cfg, &rollout_cfg);

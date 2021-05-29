@@ -1,8 +1,9 @@
-use crate::env::Env;
+use crate::env::{Env, HasTurnOrder};
 use crate::mcts::{Policy, MCTS};
 use crate::model::NNPolicy;
 use ordered_float::OrderedFloat;
 use rand::{distributions::Distribution, distributions::WeightedIndex, Rng};
+use rand_distr::Dirichlet;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -14,6 +15,8 @@ pub struct RolloutConfig {
     pub temperature: f32,
     pub sample_action: bool,
     pub steps: usize,
+    pub alpha: f32,
+    pub noisy_explore: bool,
 }
 
 pub struct ReplayBuffer<E: Env> {
@@ -94,8 +97,13 @@ fn run_game<E: Env, P: Policy<E>, R: Rng>(
     let start_player = game.player();
     let mut is_over = false;
     let mut policy = vec![0.0; E::MAX_NUM_ACTIONS];
+    let dirichlet = Dirichlet::new(&vec![cfg.alpha; E::MAX_NUM_ACTIONS]).unwrap();
 
     while !is_over {
+        if cfg.noisy_explore {
+            mcts.add_noise(&dirichlet.sample(rng));
+        }
+
         let _dur = mcts.explore_n(cfg.num_explores);
         // println!("{:?}", dur);
 
@@ -136,6 +144,10 @@ fn run_game<E: Env, P: Policy<E>, R: Rng>(
         buffer.vs[i] = r;
         r *= -1.0;
     }
+    // if game.reward(game.player()) != 0.0 {
+    //     assert!(game.reward(game.player()) == -1.0);
+    //     assert!(buffer.vs[buffer.vs.len() - 1] == 1.0);
+    // }
 }
 
 pub fn eval<E: Env, P: Policy<E> + NNPolicy<E>>(
@@ -177,7 +189,8 @@ pub fn gather_experience<E: Env, P: Policy<E>, R: Rng>(
     };
 
     buffer.make_room(cfg.steps);
-    while buffer.vs.len() < cfg.steps {
+    let target = buffer.vs.len() + cfg.steps;
+    while buffer.vs.len() < target {
         run_game(cfg, &mut cached_policy, rng, buffer);
     }
 }

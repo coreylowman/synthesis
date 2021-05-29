@@ -80,6 +80,13 @@ impl<'a, E: Env, P: Policy<E>> MCTS<'a, E, P> {
         self.nodes.len() + self.root
     }
 
+    pub fn add_noise(&mut self, noise: &Vec<f32>) {
+        let root = &mut self.nodes[self.root - self.root];
+        for i in 0..E::MAX_NUM_ACTIONS {
+            root.action_probs[i] += noise[i];
+        }
+    }
+
     pub fn step_action(&mut self, action: &E::Action) {
         // note: this function attempts to drop obviously unused nodes in order to reduce memory usage
         self.root = match self.nodes[self.root - self.root]
@@ -176,10 +183,18 @@ impl<'a, E: Env, P: Policy<E>> MCTS<'a, E, P> {
                         node.expanded = true;
 
                         // renormalize probabilities based on valid actions
-                        let total = node.children.len() as f32;
-                        for p in node.action_probs.iter_mut() {
-                            *p /= total;
+                        let mut total = 0.0;
+                        let mut mask = vec![0.0; E::MAX_NUM_ACTIONS];
+                        for &(action, _child_id) in &node.children {
+                            mask[action.into()] = 1.0;
+                            total += node.action_probs[action.into()];
                         }
+                        for i in 0..E::MAX_NUM_ACTIONS {
+                            node.action_probs[i] *= mask[i] / total;
+                        }
+
+                        // let total2 = node.action_probs.iter().sum::<f32>();
+                        // assert!((total2 - 1.0f32).abs() < 1e-6, "{} -> {}", total, total2);
 
                         node_id = self.select_best_child(node_id);
                     }

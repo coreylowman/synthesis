@@ -13,14 +13,15 @@ TODOS
 - [x] main train loop of run games -> sample -> train
 - [x] save checkpoints
 - [x] eval checkpoints
-- [ ] dirichlet noise for exploration
+- [x] dirichlet noise for exploration
 - [x] move RNG initialization outside of mcts constructor
 - [x] sample move during training
 - [x] cache evals during rollout
-- [ ] sliding windows of games instead of full regeneration
+- [x] sliding windows of games instead of full regeneration
 - [x] compare NN against optimal dataset
 - [ ] calculate c_puct instead of hardcoding
 - [ ] recalculate best child while backproping
 - [ ] multiple rollout processes
 - [ ] multiple threads for MCTS
+- [ ] rollout & eval separate processes
 - [x] self play ELO
