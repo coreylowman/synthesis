@@ -1,14 +1,13 @@
 mod data;
 mod envs;
 mod mcts;
-mod model;
+mod policies;
 mod runner;
 mod utils;
 
 use crate::data::{tensor, BatchRandSampler};
 use crate::envs::{Connect4, Env};
-use crate::mcts::Policy;
-use crate::model::{ConvNet, NNPolicy, PolicyStorage};
+use crate::policies::{ConvNet, NNPolicy, Policy, PolicyStorage};
 use crate::runner::{eval, gather_experience, ReplayBuffer, RolloutConfig};
 use crate::utils::*;
 use rand::rngs::StdRng;

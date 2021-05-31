@@ -1,6 +1,6 @@
 use crate::envs::Env;
-use crate::mcts::{Policy, MCTS};
-use crate::model::NNPolicy;
+use crate::mcts::MCTS;
+use crate::policies::{NNPolicy, Policy};
 use ordered_float::OrderedFloat;
 use rand::{distributions::Distribution, distributions::WeightedIndex, Rng};
 use rand_distr::Dirichlet;

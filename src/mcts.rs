@@ -1,4 +1,5 @@
 use crate::envs::Env;
+use crate::policies::Policy;
 use std::time::{Duration, Instant};
 
 const C_PUCT: f32 = 4.0;
@@ -43,10 +44,6 @@ impl<E: Env> Node<E> {
             value,
         }
     }
-}
-
-pub trait Policy<E: Env> {
-    fn eval(&mut self, state: &Vec<f32>) -> (Vec<f32>, f32);
 }
 
 pub struct MCTS<'a, E: Env, P: Policy<E>> {
