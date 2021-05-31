@@ -28,6 +28,6 @@ TODOS
 - [ ] library for NN CPU execution & serialization/deserialization to string
 - [ ] improve NN specification & log NN structure
 - [x] log game
-- [ ] improve state for UTTT
+- [x] improve state for UTTT
 - [ ] improve state/action for breakthrough
 - [ ] play against trained model in CLI

@@ -191,11 +191,11 @@ impl Env for UltimateTicTacToe {
     }
 
     fn get_state_dims() -> Vec<i64> {
-        vec![1, 3, 9, 9]
+        vec![1, 5, 9, 9]
     }
 
     fn state(&self) -> Vec<f32> {
-        let mut s = Vec::with_capacity(3 * 9 * 9);
+        let mut s = Vec::with_capacity(5 * 9 * 9);
         for bb in &[self.my_bb, self.op_bb] {
             for row in 0..9 {
                 for col in 0..9 {
@@ -220,6 +220,23 @@ impl Env for UltimateTicTacToe {
                 }
             }
         }
+
+        let my_highs = self.my_bb & (FAB_NINE << 81) >> 81;
+        let op_highs = self.op_bb & (FAB_NINE << 81) >> 81;
+        for bb in &[my_highs, op_highs] {
+            for row in 0..9 {
+                for col in 0..9 {
+                    let i = 27 * (row / 3) + 3 * (row % 3) + 9 * (col / 3) + col % 3;
+                    let index = 1 << (i / 9);
+                    if bb & index != 0 {
+                        s.push(1.0);
+                    } else {
+                        s.push(0.0);
+                    }
+                }
+            }
+        }
+
         s
     }
 

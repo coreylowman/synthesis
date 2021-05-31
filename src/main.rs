@@ -7,7 +7,7 @@ mod runner;
 mod utils;
 
 use crate::data::{tensor, BatchRandSampler};
-use crate::envs::{Connect4, Env};
+use crate::envs::*;
 use crate::policies::*;
 use crate::policy_impls::*;
 use crate::runner::{eval, gather_experience, ReplayBuffer, RolloutConfig};
@@ -142,9 +142,9 @@ fn main() {
         sample_action: true,
         steps: 3_200,
         alpha: 1.0,
-        noisy_explore: false,
+        noisy_explore: true,
         c_puct: 4.0,
     };
 
-    train::<Connect4, Connect4Net>(&train_cfg, &rollout_cfg);
+    train::<UltimateTicTacToe, UltimateTicTacToeNet>(&train_cfg, &rollout_cfg);
 }
