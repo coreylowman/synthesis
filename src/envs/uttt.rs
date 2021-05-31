@@ -191,12 +191,11 @@ impl Env for UltimateTicTacToe {
     }
 
     fn get_state_dims() -> Vec<i64> {
-        vec![1, 2, 9, 9]
+        vec![1, 3, 9, 9]
     }
 
     fn state(&self) -> Vec<f32> {
-        // TODO include valid moves plane
-        let mut s = Vec::with_capacity(2 * 9 * 9);
+        let mut s = Vec::with_capacity(3 * 9 * 9);
         for bb in &[self.my_bb, self.op_bb] {
             for row in 0..9 {
                 for col in 0..9 {
@@ -207,6 +206,17 @@ impl Env for UltimateTicTacToe {
                     } else {
                         s.push(0.0);
                     }
+                }
+            }
+        }
+        for row in 0..9 {
+            for col in 0..9 {
+                let i = 27 * (row / 3) + 3 * (row % 3) + 9 * (col / 3) + col % 3;
+                let index = 1 << i;
+                if self.valid_moves & index != 0 {
+                    s.push(1.0);
+                } else {
+                    s.push(0.0);
                 }
             }
         }
