@@ -2,12 +2,14 @@ mod data;
 mod envs;
 mod mcts;
 mod policies;
+mod policy_impls;
 mod runner;
 mod utils;
 
 use crate::data::{tensor, BatchRandSampler};
 use crate::envs::{Connect4, Env};
-use crate::policies::{ConvNet, NNPolicy, Policy, PolicyStorage};
+use crate::policies::*;
+use crate::policy_impls::*;
 use crate::runner::{eval, gather_experience, ReplayBuffer, RolloutConfig};
 use crate::utils::*;
 use rand::rngs::StdRng;
@@ -144,5 +146,5 @@ fn main() {
         c_puct: 4.0,
     };
 
-    train::<Connect4, ConvNet<Connect4>>(&train_cfg, &rollout_cfg);
+    train::<Connect4, Connect4Net>(&train_cfg, &rollout_cfg);
 }

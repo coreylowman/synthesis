@@ -1,10 +1,9 @@
-use super::traits::{NNPolicy, Policy};
 use crate::data::tensor;
-use crate::envs::Env;
-use std::marker::PhantomData;
+use crate::envs::{Connect4, Env};
+use crate::policies::{NNPolicy, Policy};
 use tch::{self, nn, Tensor};
 
-pub struct ConvNet<E: Env> {
+pub struct Connect4Net {
     conv_1: nn::Conv2D,
     fc_1: nn::Linear,
     fc_2: nn::Linear,
@@ -12,13 +11,12 @@ pub struct ConvNet<E: Env> {
     p_2: nn::Linear,
     v_1: nn::Linear,
     v_2: nn::Linear,
-    _marker: PhantomData<E>,
 }
 
-impl<E: Env> NNPolicy<E> for ConvNet<E> {
+impl NNPolicy<Connect4> for Connect4Net {
     fn new(vs: &nn::VarStore) -> Self {
         let root = &vs.root();
-        let state_dims = E::get_state_dims();
+        let state_dims = Connect4::get_state_dims();
         assert!(state_dims.len() == 4);
         assert!(state_dims[0] == 1);
         Self {
@@ -34,12 +32,11 @@ impl<E: Env> NNPolicy<E> for ConvNet<E> {
             p_2: nn::linear(
                 root / "p_2",
                 64,
-                E::MAX_NUM_ACTIONS as i64,
+                Connect4::MAX_NUM_ACTIONS as i64,
                 Default::default(),
             ),
             v_1: nn::linear(root / "v_1", 64, 64, Default::default()),
             v_2: nn::linear(root / "v_2", 64, 1, Default::default()),
-            _marker: PhantomData,
         }
     }
 
@@ -59,9 +56,9 @@ impl<E: Env> NNPolicy<E> for ConvNet<E> {
     }
 }
 
-impl<E: Env> Policy<E> for ConvNet<E> {
+impl Policy<Connect4> for Connect4Net {
     fn eval(&mut self, xs: &Vec<f32>) -> (Vec<f32>, f32) {
-        let t = tensor(&xs, &E::get_state_dims(), tch::Kind::Float);
+        let t = tensor(&xs, &Connect4::get_state_dims(), tch::Kind::Float);
         let (logits, value) = self.forward(&t);
         let policy = logits.softmax(-1, tch::Kind::Float);
         let policy = Vec::<f32>::from(&policy);
