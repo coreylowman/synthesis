@@ -17,6 +17,7 @@ pub struct RolloutConfig {
     pub steps: usize,
     pub alpha: f32,
     pub noisy_explore: bool,
+    pub c_puct: f32,
 }
 
 pub struct ReplayBuffer<E: Env> {
@@ -92,7 +93,7 @@ fn run_game<E: Env, P: Policy<E>, R: Rng>(
     buffer: &mut ReplayBuffer<E>,
 ) {
     let start_i = buffer.vs.len();
-    let mut mcts = MCTS::<E, P>::with_capacity(cfg.capacity, policy);
+    let mut mcts = MCTS::<E, P>::with_capacity(cfg.capacity, cfg.c_puct, policy);
     let mut game = E::new();
     let start_player = game.player();
     let mut is_over = false;
@@ -157,8 +158,8 @@ pub fn eval<E: Env, P: Policy<E> + NNPolicy<E>>(
 ) -> f32 {
     let mut game = E::new();
     let player = game.player();
-    let mut mcts_a = MCTS::<E, P>::with_capacity(cfg.capacity, policy_a);
-    let mut mcts_b = MCTS::<E, P>::with_capacity(cfg.capacity, policy_b);
+    let mut mcts_a = MCTS::<E, P>::with_capacity(cfg.capacity, cfg.c_puct, policy_a);
+    let mut mcts_b = MCTS::<E, P>::with_capacity(cfg.capacity, cfg.c_puct, policy_b);
     loop {
         let action = if game.player() == player {
             mcts_a.explore_n(cfg.num_explores);

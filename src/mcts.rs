@@ -2,8 +2,6 @@ use crate::envs::Env;
 use crate::policies::Policy;
 use std::time::{Duration, Instant};
 
-const C_PUCT: f32 = 4.0;
-
 pub struct Node<E: Env> {
     pub parent: usize,
     pub env: E,
@@ -51,10 +49,11 @@ pub struct MCTS<'a, E: Env, P: Policy<E>> {
     pub nodes: Vec<Node<E>>,
     pub states: Vec<Vec<f32>>,
     pub policy: &'a mut P,
+    pub c_puct: f32,
 }
 
 impl<'a, E: Env, P: Policy<E>> MCTS<'a, E, P> {
-    pub fn with_capacity(capacity: usize, policy: &'a mut P) -> Self {
+    pub fn with_capacity(capacity: usize, c_puct: f32, policy: &'a mut P) -> Self {
         let env = E::new();
         let state = env.state();
         let (action_probs, value) = policy.eval(&state);
@@ -70,6 +69,7 @@ impl<'a, E: Env, P: Policy<E>> MCTS<'a, E, P> {
             nodes,
             states,
             policy,
+            c_puct,
         }
     }
 
@@ -212,7 +212,8 @@ impl<'a, E: Env, P: Policy<E>> MCTS<'a, E, P> {
             let child = &self.nodes[child_id - self.root];
             // NOTE: -child.cum_value because child.cum_value is in opponent's win pct, so we want to convert to ours
             let value = -child.cum_value / child.num_visits
-                + C_PUCT * node.action_probs[action.into()] * visits / (1.0 + child.num_visits);
+                + self.c_puct * node.action_probs[action.into()] * visits
+                    / (1.0 + child.num_visits);
             if value > best_value {
                 best_child_id = child_id;
                 best_value = value;

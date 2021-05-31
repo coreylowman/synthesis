@@ -141,6 +141,7 @@ fn main() {
         steps: 3_200,
         alpha: 1.0,
         noisy_explore: false,
+        c_puct: 4.0,
     };
 
     train::<Connect4, ConvNet<Connect4>>(&train_cfg, &rollout_cfg);
