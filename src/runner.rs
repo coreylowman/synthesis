@@ -1,4 +1,4 @@
-use crate::env::{Env, HasTurnOrder};
+use crate::envs::Env;
 use crate::mcts::{Policy, MCTS};
 use crate::model::NNPolicy;
 use ordered_float::OrderedFloat;

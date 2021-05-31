@@ -1,4 +1,4 @@
-use crate::env::Env;
+use crate::envs::Env;
 use std::time::{Duration, Instant};
 
 const C_PUCT: f32 = 4.0;

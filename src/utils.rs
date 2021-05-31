@@ -65,7 +65,6 @@ pub fn calculate_ratings(dir: &PathBuf) -> Result<(), std::io::Error> {
     write!(stdin, "readpgn results.pgn\n")?;
     write!(stdin, "elo\n")?;
     write!(stdin, "mm\n")?;
-    write!(stdin, "elo 1 0\n")?;
     write!(stdin, "exactdist\n")?;
     write!(stdin, "ratings >ratings\n")?;
     write!(stdin, "x\n")?;

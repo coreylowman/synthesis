@@ -1,5 +1,5 @@
 use crate::data::tensor;
-use crate::env::Env;
+use crate::envs::Env;
 use crate::mcts::Policy;
 use std::collections::HashMap;
 use std::marker::PhantomData;

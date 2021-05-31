@@ -1,14 +1,12 @@
-mod connect4;
 mod data;
-mod env;
+mod envs;
 mod mcts;
 mod model;
 mod runner;
 mod utils;
 
-use crate::connect4::Connect4;
 use crate::data::{tensor, BatchRandSampler};
-use crate::env::Env;
+use crate::envs::{Connect4, Env};
 use crate::mcts::Policy;
 use crate::model::{ConvNet, NNPolicy, PolicyStorage};
 use crate::runner::{eval, gather_experience, ReplayBuffer, RolloutConfig};
