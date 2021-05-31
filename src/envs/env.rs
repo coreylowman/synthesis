@@ -8,6 +8,7 @@ pub trait Env: Clone {
     type Action: Eq + Clone + Copy + std::fmt::Debug + Into<usize> + From<usize>;
     type ActionIterator: Iterator<Item = Self::Action>;
 
+    const NAME: &'static str;
     const MAX_NUM_ACTIONS: usize;
     const NUM_PLAYERS: usize;
 

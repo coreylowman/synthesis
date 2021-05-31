@@ -41,6 +41,7 @@ fn train<E: Env, P: Policy<E> + NNPolicy<E>>(train_cfg: &TrainConfig, rollout_cf
     std::fs::create_dir(&models_dir).expect("");
     save(&train_dir, "train_cfg.json", train_cfg);
     save(&train_dir, "rollout_cfg.json", rollout_cfg);
+    save_str(&train_dir, "env_name", &E::NAME.into());
     save_str(&train_dir, "git_hash", &git_hash());
     save_str(&train_dir, "git_diff.txt", &git_diff());
 
@@ -56,7 +57,6 @@ fn train<E: Env, P: Policy<E> + NNPolicy<E>>(train_cfg: &TrainConfig, rollout_cf
     opt.set_weight_decay(train_cfg.weight_decay);
 
     let mut dims = E::get_state_dims();
-    dims.insert(0, -1);
     let num_acs = E::MAX_NUM_ACTIONS as i64;
 
     let mut name = String::from("model_0.ot");

@@ -100,6 +100,7 @@ impl UltimateTicTacToe {
 }
 
 impl Env for UltimateTicTacToe {
+    const NAME: &'static str = "UltimateTicTacToe";
     const MAX_NUM_ACTIONS: usize = 9 * 9;
     const NUM_PLAYERS: usize = 2;
 
@@ -190,7 +191,7 @@ impl Env for UltimateTicTacToe {
     }
 
     fn get_state_dims() -> Vec<i64> {
-        vec![2, 9, 9]
+        vec![1, 2, 9, 9]
     }
 
     fn state(&self) -> Vec<f32> {

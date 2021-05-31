@@ -109,6 +109,7 @@ impl Breakthrough {
 }
 
 impl Env for Breakthrough {
+    const NAME: &'static str = "Breakthrough";
     const MAX_NUM_ACTIONS: usize = 64 * 3;
     const NUM_PLAYERS: usize = 2;
 
@@ -187,7 +188,7 @@ impl Env for Breakthrough {
     }
 
     fn get_state_dims() -> Vec<i64> {
-        vec![2, 8, 8]
+        vec![1, 2, 8, 8]
     }
 
     fn state(&self) -> Vec<f32> {

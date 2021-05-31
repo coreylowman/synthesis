@@ -91,6 +91,7 @@ impl Connect4 {
 }
 
 impl Env for Connect4 {
+    const NAME: &'static str = "Connect4";
     const MAX_NUM_ACTIONS: usize = WIDTH;
     const NUM_PLAYERS: usize = 2;
 
@@ -150,7 +151,7 @@ impl Env for Connect4 {
     }
 
     fn get_state_dims() -> Vec<i64> {
-        vec![2, HEIGHT as i64, WIDTH as i64]
+        vec![1, 2, HEIGHT as i64, WIDTH as i64]
     }
 
     fn state(&self) -> Vec<f32> {

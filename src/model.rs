@@ -48,7 +48,6 @@ impl PolicyStorage {
 }
 
 pub struct ConvNet<E: Env> {
-    state_dims: Vec<i64>,
     conv_1: nn::Conv2D,
     fc_1: nn::Linear,
     fc_2: nn::Linear,
@@ -62,9 +61,9 @@ pub struct ConvNet<E: Env> {
 impl<E: Env> NNPolicy<E> for ConvNet<E> {
     fn new(vs: &nn::VarStore) -> Self {
         let root = &vs.root();
-        let mut state_dims = E::get_state_dims();
-        assert!(state_dims.len() == 3);
-        state_dims.insert(0, 1);
+        let state_dims = E::get_state_dims();
+        assert!(state_dims.len() == 4);
+        assert!(state_dims[0] == 1);
         Self {
             conv_1: nn::conv2d(root / "conv_1", state_dims[1], 256, 4, Default::default()),
             fc_1: nn::linear(
@@ -83,7 +82,6 @@ impl<E: Env> NNPolicy<E> for ConvNet<E> {
             ),
             v_1: nn::linear(root / "v_1", 64, 64, Default::default()),
             v_2: nn::linear(root / "v_2", 64, 1, Default::default()),
-            state_dims,
             _marker: PhantomData,
         }
     }
@@ -106,21 +104,12 @@ impl<E: Env> NNPolicy<E> for ConvNet<E> {
 
 impl<E: Env> Policy<E> for ConvNet<E> {
     fn eval(&mut self, xs: &Vec<f32>) -> (Vec<f32>, f32) {
-        let t = tensor(&xs, &self.state_dims, tch::Kind::Float);
+        let t = tensor(&xs, &E::get_state_dims(), tch::Kind::Float);
         let (logits, value) = self.forward(&t);
         let policy = logits.softmax(-1, tch::Kind::Float);
         let policy = Vec::<f32>::from(&policy);
         // assert!(policy.len() == E::MAX_NUM_ACTIONS);
         let value = f32::from(&value);
         (policy, value)
-    }
-}
-pub struct UniformRandomPolicy;
-impl<E: Env> Policy<E> for UniformRandomPolicy {
-    fn eval(&mut self, _xs: &Vec<f32>) -> (Vec<f32>, f32) {
-        (
-            vec![1.0 / (E::MAX_NUM_ACTIONS as f32); E::MAX_NUM_ACTIONS],
-            0.0,
-        )
     }
 }
