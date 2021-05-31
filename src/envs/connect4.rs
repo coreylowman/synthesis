@@ -1,4 +1,4 @@
-use crate::env::{Env, HasTurnOrder};
+use super::env::{Env, HasTurnOrder};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PlayerId {
@@ -44,6 +44,7 @@ impl Into<usize> for Column {
         self.0 as usize
     }
 }
+
 pub struct FreeColumns {
     height: [u8; WIDTH],
     col: u8,
@@ -153,7 +154,7 @@ impl Env for Connect4 {
     }
 
     fn state(&self) -> Vec<f32> {
-        let mut s = Vec::with_capacity(WIDTH * HEIGHT);
+        let mut s = Vec::with_capacity(2 * WIDTH * HEIGHT);
         for bb in &[self.my_bb, self.op_bb] {
             for row in 0..HEIGHT {
                 for col in 0..WIDTH {
