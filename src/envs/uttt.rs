@@ -99,14 +99,14 @@ impl UltimateTicTacToe {
     }
 }
 
-impl Env for UltimateTicTacToe {
+impl Env<{ 9 * 9 }> for UltimateTicTacToe {
     const NAME: &'static str = "UltimateTicTacToe";
-    const MAX_NUM_ACTIONS: usize = 9 * 9;
     const NUM_PLAYERS: usize = 2;
 
     type PlayerId = PlayerId;
     type Action = Cell;
     type ActionIterator = ActionIterator;
+    type State = [[[bool; 9]; 9]; 5];
 
     fn new() -> Self {
         Self {
@@ -194,47 +194,46 @@ impl Env for UltimateTicTacToe {
         vec![1, 5, 9, 9]
     }
 
-    fn state(&self) -> Vec<f32> {
-        let mut s = Vec::with_capacity(5 * 9 * 9);
+    fn state(&self) -> Self::State {
+        let mut s = [[[false; 9]; 9]; 5];
+        let mut c = 0;
         for bb in &[self.my_bb, self.op_bb] {
             for row in 0..9 {
                 for col in 0..9 {
                     let i = 27 * (row / 3) + 3 * (row % 3) + 9 * (col / 3) + col % 3;
                     let index = 1 << i;
                     if bb & index != 0 {
-                        s.push(1.0);
-                    } else {
-                        s.push(0.0);
+                        s[c][row][col] = true;
                     }
                 }
             }
+            c += 1;
         }
+
         for row in 0..9 {
             for col in 0..9 {
                 let i = 27 * (row / 3) + 3 * (row % 3) + 9 * (col / 3) + col % 3;
                 let index = 1 << i;
                 if self.valid_moves & index != 0 {
-                    s.push(1.0);
-                } else {
-                    s.push(0.0);
+                    s[2][row][col] = true;
                 }
             }
         }
 
         let my_highs = self.my_bb & (FAB_NINE << 81) >> 81;
         let op_highs = self.op_bb & (FAB_NINE << 81) >> 81;
+        c = 3;
         for bb in &[my_highs, op_highs] {
             for row in 0..9 {
                 for col in 0..9 {
                     let i = 27 * (row / 3) + 3 * (row % 3) + 9 * (col / 3) + col % 3;
                     let index = 1 << (i / 9);
                     if bb & index != 0 {
-                        s.push(1.0);
-                    } else {
-                        s.push(0.0);
+                        s[c][row][col] = true;
                     }
                 }
             }
+            c += 1;
         }
 
         s

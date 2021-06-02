@@ -6,11 +6,11 @@ mod policy_impls;
 mod runner;
 mod utils;
 
-use crate::data::{tensor, BatchRandSampler};
+use crate::data::*;
 use crate::envs::*;
 use crate::policies::*;
 use crate::policy_impls::*;
-use crate::runner::{eval, gather_experience, ReplayBuffer, RolloutConfig};
+use crate::runner::*;
 use crate::utils::*;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -33,7 +33,10 @@ struct TrainConfig {
     pub logs: &'static str,
 }
 
-fn train<E: Env, P: Policy<E> + NNPolicy<E>>(train_cfg: &TrainConfig, rollout_cfg: &RolloutConfig) {
+fn train<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
+    train_cfg: &TrainConfig,
+    rollout_cfg: &RolloutConfig,
+) {
     let train_dir = train_dir(train_cfg.logs);
     let models_dir = train_dir.join("models");
     let pgn_path = train_dir.join("results.pgn");
@@ -50,7 +53,7 @@ fn train<E: Env, P: Policy<E> + NNPolicy<E>>(train_cfg: &TrainConfig, rollout_cf
     let mut rng = StdRng::seed_from_u64(train_cfg.seed);
 
     let mut policies = PolicyStorage::with_capacity(train_cfg.num_iterations);
-    let mut buffer = ReplayBuffer::<E>::new(train_cfg.buffer_size);
+    let mut buffer = ReplayBuffer::<E, N>::new(train_cfg.buffer_size);
 
     let vs = VarStore::new(tch::Device::Cpu);
     let mut policy = P::new(&vs);
@@ -58,7 +61,6 @@ fn train<E: Env, P: Policy<E> + NNPolicy<E>>(train_cfg: &TrainConfig, rollout_cf
     opt.set_weight_decay(train_cfg.weight_decay);
 
     let mut dims = E::get_state_dims();
-    let num_acs = E::MAX_NUM_ACTIONS as i64;
 
     let mut name = String::from("model_0.ot");
     policies.insert(&name, &vs);
@@ -67,13 +69,13 @@ fn train<E: Env, P: Policy<E> + NNPolicy<E>>(train_cfg: &TrainConfig, rollout_cf
         // gather data
         {
             let _guard = tch::no_grad_guard();
-            gather_experience::<E, P, StdRng>(rollout_cfg, &mut policy, &mut rng, &mut buffer);
+            gather_experience::<E, P, StdRng, N>(rollout_cfg, &mut policy, &mut rng, &mut buffer);
         }
 
         // convert to tensors
         dims[0] = buffer.vs.len() as i64;
-        let states = tensor(&buffer.states, &dims, Kind::Float);
-        let target_pis = tensor(&buffer.pis, &[dims[0], num_acs], Kind::Float);
+        let states = tensor(&buffer.states, &dims, Kind::Bool).to_kind(tch::Kind::Float);
+        let target_pis = tensor(&buffer.pis, &[dims[0], N as i64], Kind::Float);
         let target_vs = tensor(&buffer.vs, &[dims[0], 1], Kind::Float);
 
         // train
@@ -128,7 +130,7 @@ fn main() {
         lr: 1e-3,
         weight_decay: 1e-5,
         num_iterations: 100,
-        num_epochs: 16,
+        num_epochs: 2,
         batch_size: 256,
         buffer_size: 16_000,
         seed: 0,
@@ -146,5 +148,8 @@ fn main() {
         c_puct: 4.0,
     };
 
-    train::<UltimateTicTacToe, UltimateTicTacToeNet>(&train_cfg, &rollout_cfg);
+    train::<UltimateTicTacToe, UltimateTicTacToeNet, { UltimateTicTacToe::MAX_NUM_ACTIONS }>(
+        &train_cfg,
+        &rollout_cfg,
+    );
 }

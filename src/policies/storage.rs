@@ -23,7 +23,10 @@ impl PolicyStorage {
         self.names.push(name.clone());
     }
 
-    pub fn get<E: Env, P: Policy<E> + NNPolicy<E>>(&self, name: &String) -> P {
+    pub fn get<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
+        &self,
+        name: &String,
+    ) -> P {
         P::new(self.store.get(name).unwrap())
     }
 

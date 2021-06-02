@@ -1,6 +1,7 @@
 use std::ffi::c_void;
 use tch::{Kind, Tensor};
 use torch_sys::at_tensor_of_data;
+use crate::envs::Env;
 
 pub struct BatchRandSampler<'a> {
     inds: Tensor,
@@ -86,4 +87,38 @@ pub fn tensor<T>(data: &[T], dims: &[i64], kind: tch::Kind) -> Tensor {
     let ndims = dims.len();
     let dims = dims.as_ptr();
     unsafe { Tensor::from_ptr(at_tensor_of_data(data, dims, ndims, dsize, dtype)) }
+}
+
+pub struct ReplayBuffer<E: Env<N>, const N: usize> {
+    capacity: usize,
+    pub states: Vec<E::State>,
+    pub pis: Vec<[f32; N]>,
+    pub vs: Vec<f32>,
+}
+
+impl<E: Env<N>, const N: usize> ReplayBuffer<E, N> {
+    pub fn new(n: usize) -> Self {
+        Self {
+            capacity: n,
+            states: Vec::with_capacity(n),
+            pis: Vec::with_capacity(n),
+            vs: Vec::with_capacity(n),
+        }
+    }
+
+    pub fn add(&mut self, state: &E::State, pi: &[f32; N], v: f32) {
+        self.states.push(state.clone());
+        self.pis.push(pi.clone());
+        self.vs.push(v);
+    }
+
+    pub fn make_room(&mut self, n: usize) {
+        if self.vs.len() + n > self.capacity {
+            let num_to_drop = self.vs.len() + n - self.capacity;
+            drop(self.states.drain(0..(num_to_drop)));
+            drop(self.pis.drain(0..(num_to_drop)));
+            drop(self.vs.drain(0..(num_to_drop)));
+        }
+        assert!(self.vs.len() + n <= self.capacity);
+    }
 }

@@ -13,7 +13,7 @@ pub struct Connect4Net {
     v_2: nn::Linear,
 }
 
-impl NNPolicy<Connect4> for Connect4Net {
+impl NNPolicy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
     fn new(vs: &nn::VarStore) -> Self {
         let root = &vs.root();
         let state_dims = Connect4::get_state_dims();
@@ -56,13 +56,16 @@ impl NNPolicy<Connect4> for Connect4Net {
     }
 }
 
-impl Policy<Connect4> for Connect4Net {
-    fn eval(&mut self, xs: &Vec<f32>) -> (Vec<f32>, f32) {
-        let t = tensor(&xs, &Connect4::get_state_dims(), tch::Kind::Float);
+impl Policy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
+    fn eval(
+        &mut self,
+        xs: &<Connect4 as Env<{ Connect4::MAX_NUM_ACTIONS }>>::State,
+    ) -> ([f32; Connect4::MAX_NUM_ACTIONS], f32) {
+        let t = tensor(xs, &Connect4::get_state_dims(), tch::Kind::Bool).to_kind(tch::Kind::Float);
         let (logits, value) = self.forward(&t);
-        let policy = logits.softmax(-1, tch::Kind::Float);
-        let policy = Vec::<f32>::from(&policy);
-        // assert!(policy.len() == E::MAX_NUM_ACTIONS);
+        let policy_ = logits.softmax(-1, tch::Kind::Float);
+        let mut policy = [0.0f32; Connect4::MAX_NUM_ACTIONS];
+        policy_.copy_data(&mut policy, Connect4::MAX_NUM_ACTIONS);
         let value = f32::from(&value);
         (policy, value)
     }

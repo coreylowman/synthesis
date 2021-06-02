@@ -2,7 +2,7 @@ use crate::envs::Env;
 use crate::policies::Policy;
 use std::time::{Duration, Instant};
 
-pub struct Node<E: Env> {
+pub struct Node<E: Env<N>, const N: usize> {
     pub parent: usize,
     pub env: E,
     pub terminal: bool,
@@ -11,16 +11,16 @@ pub struct Node<E: Env> {
     pub children: Vec<(E::Action, usize)>,
     pub cum_value: f32,
     pub num_visits: f32,
-    pub action_probs: Vec<f32>,
+    pub action_probs: [f32; N], // TODO make this a box?
     pub value: f32,
 }
 
-impl<E: Env> Node<E> {
+impl<E: Env<N>, const N: usize> Node<E, N> {
     pub fn new(
         parent_id: usize,
         env: E,
         is_over: bool,
-        action_probs: Vec<f32>,
+        action_probs: [f32; N],
         value: f32,
     ) -> Self {
         let actions = env.iter_actions();
@@ -44,15 +44,15 @@ impl<E: Env> Node<E> {
     }
 }
 
-pub struct MCTS<'a, E: Env, P: Policy<E>> {
+pub struct MCTS<'a, E: Env<N>, P: Policy<E, N>, const N: usize> {
     pub root: usize,
-    pub nodes: Vec<Node<E>>,
-    pub states: Vec<Vec<f32>>,
+    pub nodes: Vec<Node<E, N>>,
+    pub states: Vec<E::State>,
     pub policy: &'a mut P,
     pub c_puct: f32,
 }
 
-impl<'a, E: Env, P: Policy<E>> MCTS<'a, E, P> {
+impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
     pub fn with_capacity(capacity: usize, c_puct: f32, policy: &'a mut P) -> Self {
         let env = E::new();
         let state = env.state();
@@ -79,7 +79,7 @@ impl<'a, E: Env, P: Policy<E>> MCTS<'a, E, P> {
 
     pub fn add_noise(&mut self, noise: &Vec<f32>) {
         let root = &mut self.nodes[self.root - self.root];
-        for i in 0..E::MAX_NUM_ACTIONS {
+        for i in 0..N {
             root.action_probs[i] += noise[i];
         }
     }
@@ -114,15 +114,15 @@ impl<'a, E: Env, P: Policy<E>> MCTS<'a, E, P> {
         self.nodes[0].parent = self.root;
     }
 
-    pub fn root_node(&self) -> &Node<E> {
+    pub fn root_node(&self) -> &Node<E, N> {
         self.get_node(self.root)
     }
 
-    pub fn root_state(&self) -> &Vec<f32> {
+    pub fn root_state(&self) -> &E::State {
         &self.states[self.root - self.root]
     }
 
-    pub fn get_node(&self, node_id: usize) -> &Node<E> {
+    pub fn get_node(&self, node_id: usize) -> &Node<E, N> {
         &self.nodes[node_id - self.root]
     }
 
@@ -181,12 +181,12 @@ impl<'a, E: Env, P: Policy<E>> MCTS<'a, E, P> {
 
                         // renormalize probabilities based on valid actions
                         let mut total = 0.0;
-                        let mut mask = vec![0.0; E::MAX_NUM_ACTIONS];
+                        let mut mask = [0.0; N];
                         for &(action, _child_id) in &node.children {
                             mask[action.into()] = 1.0;
                             total += node.action_probs[action.into()];
                         }
-                        for i in 0..E::MAX_NUM_ACTIONS {
+                        for i in 0..N {
                             node.action_probs[i] *= mask[i] / total;
                         }
 

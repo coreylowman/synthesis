@@ -13,7 +13,7 @@ pub struct UltimateTicTacToeNet {
     v_2: nn::Linear,
 }
 
-impl NNPolicy<UltimateTicTacToe> for UltimateTicTacToeNet {
+impl NNPolicy<UltimateTicTacToe, { UltimateTicTacToe::MAX_NUM_ACTIONS }> for UltimateTicTacToeNet {
     fn new(vs: &nn::VarStore) -> Self {
         let root = &vs.root();
         let state_dims = UltimateTicTacToe::get_state_dims();
@@ -64,13 +64,17 @@ impl NNPolicy<UltimateTicTacToe> for UltimateTicTacToeNet {
     }
 }
 
-impl Policy<UltimateTicTacToe> for UltimateTicTacToeNet {
-    fn eval(&mut self, xs: &Vec<f32>) -> (Vec<f32>, f32) {
-        let t = tensor(&xs, &UltimateTicTacToe::get_state_dims(), tch::Kind::Float);
+impl Policy<UltimateTicTacToe, { UltimateTicTacToe::MAX_NUM_ACTIONS }> for UltimateTicTacToeNet {
+    fn eval(
+        &mut self,
+        xs: &<UltimateTicTacToe as Env<{ UltimateTicTacToe::MAX_NUM_ACTIONS }>>::State,
+    ) -> ([f32; UltimateTicTacToe::MAX_NUM_ACTIONS], f32) {
+        let t = tensor(xs, &UltimateTicTacToe::get_state_dims(), tch::Kind::Bool)
+            .to_kind(tch::Kind::Float);
         let (logits, value) = self.forward(&t);
-        let policy = logits.softmax(-1, tch::Kind::Float);
-        let policy = Vec::<f32>::from(&policy);
-        // assert!(policy.len() == E::MAX_NUM_ACTIONS);
+        let policy_ = logits.softmax(-1, tch::Kind::Float);
+        let mut policy = [0.0f32; UltimateTicTacToe::MAX_NUM_ACTIONS];
+        policy_.copy_data(&mut policy, UltimateTicTacToe::MAX_NUM_ACTIONS);
         let value = f32::from(&value);
         (policy, value)
     }

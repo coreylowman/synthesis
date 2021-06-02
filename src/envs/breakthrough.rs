@@ -108,11 +108,11 @@ impl Breakthrough {
     }
 }
 
-impl Env for Breakthrough {
+impl Env<{ 64 * 3 }> for Breakthrough {
     const NAME: &'static str = "Breakthrough";
-    const MAX_NUM_ACTIONS: usize = 64 * 3;
     const NUM_PLAYERS: usize = 2;
 
+    type State = [[[bool; 8]; 8]; 2];
     type PlayerId = PlayerId;
     type Action = FromToAction;
     type ActionIterator =
@@ -191,20 +191,20 @@ impl Env for Breakthrough {
         vec![1, 2, 8, 8]
     }
 
-    fn state(&self) -> Vec<f32> {
+    fn state(&self) -> Self::State {
         // TODO if color is black we need to flip vertically
-        let mut s = Vec::with_capacity(8 * 8);
+        let mut s = [[[false; 8]; 8]; 2];
+        let mut i = 0;
         for bb in &[self.my_bb, self.op_bb] {
             for row in 0..8 {
                 for col in 0..8 {
                     let index = 1 << (row + 8 * col);
                     if bb & index != 0 {
-                        s.push(1.0);
-                    } else {
-                        s.push(0.0);
+                        s[i][row][col] = true;
                     }
                 }
             }
+            i += 1;
         }
         s
     }

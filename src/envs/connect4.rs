@@ -90,14 +90,14 @@ impl Connect4 {
     }
 }
 
-impl Env for Connect4 {
+impl Env<WIDTH> for Connect4 {
     const NAME: &'static str = "Connect4";
-    const MAX_NUM_ACTIONS: usize = WIDTH;
     const NUM_PLAYERS: usize = 2;
 
     type PlayerId = PlayerId;
     type Action = Column;
     type ActionIterator = FreeColumns;
+    type State = [[[bool; WIDTH]; HEIGHT]; 2];
 
     fn new() -> Self {
         Self {
@@ -154,19 +154,19 @@ impl Env for Connect4 {
         vec![1, 2, HEIGHT as i64, WIDTH as i64]
     }
 
-    fn state(&self) -> Vec<f32> {
-        let mut s = Vec::with_capacity(2 * WIDTH * HEIGHT);
+    fn state(&self) -> Self::State {
+        let mut s = [[[false; WIDTH]; HEIGHT]; 2];
+        let mut i = 0;
         for bb in &[self.my_bb, self.op_bb] {
             for row in 0..HEIGHT {
                 for col in 0..WIDTH {
                     let index = 1 << (row + 7 * col);
                     if bb & index != 0 {
-                        s.push(1.0);
-                    } else {
-                        s.push(0.0);
+                        s[i][row][col] = true;
                     }
                 }
             }
+            i += 1;
         }
         s
     }
@@ -215,14 +215,14 @@ mod tests {
         let mut game = Connect4::new();
         game.print();
         let s = game.state();
-        assert!(s.iter().all(|&c| c == 0.0));
+        assert!(s.iter().all(|&c| c == 0.0f32));
         assert!(game.player() == PlayerId::Red);
 
         assert!(game.step(&Column(0)) == false);
         game.print();
         let s = game.state();
-        assert!(s[0] == -1.0);
-        assert!(s[1..].iter().all(|&c| c == 0.0));
+        assert!(s[0] == -1.0f32);
+        assert!(s[1..].iter().all(|&c| c == 0.0f32));
 
         assert!(game.step(&Column(2)) == false);
         game.print();
