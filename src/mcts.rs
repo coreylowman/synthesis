@@ -53,8 +53,7 @@ pub struct MCTS<'a, E: Env<N>, P: Policy<E, N>, const N: usize> {
 }
 
 impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
-    pub fn with_capacity(capacity: usize, c_puct: f32, policy: &'a mut P) -> Self {
-        let env = E::new();
+    pub fn with_capacity(capacity: usize, c_puct: f32, policy: &'a mut P, env: E) -> Self {
         let state = env.state();
         let (action_probs, value) = policy.eval(&state);
         let root = Node::new(0, env, false, action_probs, value);

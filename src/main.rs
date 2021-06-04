@@ -1,11 +1,14 @@
+mod base65536;
 mod data;
 mod envs;
 mod mcts;
 mod policies;
 mod policy_impls;
 mod runner;
+mod slimnn;
 mod utils;
 
+use crate::base65536::*;
 use crate::data::*;
 use crate::envs::*;
 use crate::policies::*;
@@ -159,5 +162,8 @@ fn main() {
         c_puct: 4.0,
     };
 
+    // let ts = tch::Tensor::load_multi("./logs/Connect4/06-03-2021T21-03-45Z/models/model_199.ot")
+    //     .expect("failed");
+    // serialize_tensors(&ts, "./c4-weights");
     train::<Connect4, Connect4Net, { Connect4::MAX_NUM_ACTIONS }>(&train_cfg, &rollout_cfg);
 }
