@@ -1,5 +1,20 @@
 use super::env::{Env, HasTurnOrder};
 
+/*
++----------------------------+
+| 6 13 20 27 34 41 48 55 62 |
+| 5 12 19 26 33 40 47 54 61 |
+| 4 11 18 25 32 39 46 53 60 |
+| 3 10 17 24 31 38 45 52 59 |
+| 2  9 16 23 30 37 44 51 58 |
+| 1  8 15 22 29 36 43 50 57 |
+| 0  7 14 21 28 35 42 49 56 | 63
++----------------------------+
+*/
+
+const WIDTH: usize = 9;
+const HEIGHT: usize = 7;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PlayerId {
     Red,
@@ -19,8 +34,53 @@ impl HasTurnOrder for PlayerId {
     }
 }
 
-const WIDTH: usize = 7;
-const HEIGHT: usize = 6;
+const FAB_COL: u64 = 0b1111111;
+const FAB_ROW: u64 = (1 << (7 * 0))
+    | (1 << (7 * 1))
+    | (1 << (7 * 2))
+    | (1 << (7 * 3))
+    | (1 << (7 * 4))
+    | (1 << (7 * 5))
+    | (1 << (7 * 6))
+    | (1 << (7 * 7))
+    | (1 << (7 * 8));
+
+const COLS: [u64; WIDTH] = [
+    FAB_COL << (7 * 0),
+    FAB_COL << (7 * 1),
+    FAB_COL << (7 * 2),
+    FAB_COL << (7 * 3),
+    FAB_COL << (7 * 4),
+    FAB_COL << (7 * 5),
+    FAB_COL << (7 * 6),
+    FAB_COL << (7 * 7),
+    FAB_COL << (7 * 8),
+];
+
+const ROWS: [u64; HEIGHT] = [
+    FAB_ROW << 0,
+    FAB_ROW << 1,
+    FAB_ROW << 2,
+    FAB_ROW << 3,
+    FAB_ROW << 4,
+    FAB_ROW << 5,
+    FAB_ROW << 6,
+];
+
+const D1_MASK: u64 = (COLS[0] | COLS[1] | COLS[2] | COLS[3] | COLS[4] | COLS[5])
+    & (ROWS[3] | ROWS[4] | ROWS[5] | ROWS[6]);
+const D2_MASK: u64 = (COLS[0] | COLS[1] | COLS[2] | COLS[3] | COLS[4] | COLS[5])
+    & (ROWS[0] | ROWS[1] | ROWS[2] | ROWS[3]);
+const H_MASK: u64 = COLS[0] | COLS[1] | COLS[2] | COLS[3] | COLS[4] | COLS[5];
+const V_MASK: u64 = ROWS[0] | ROWS[1] | ROWS[2] | ROWS[3];
+
+const fn won(bb: u64) -> bool {
+    let d1 = bb & (bb >> 6) & (bb >> 12) & (bb >> 18) & D1_MASK;
+    let d2 = bb & (bb >> 8) & (bb >> 16) & (bb >> 24) & D2_MASK;
+    let h = bb & (bb >> 7) & (bb >> 14) & (bb >> 21) & H_MASK;
+    let v = bb & (bb >> 1) & (bb >> 2) & (bb >> 3) & V_MASK;
+    v + h + d1 + d2 > 0
+}
 
 #[derive(Clone)]
 pub struct Connect4 {
@@ -72,21 +132,13 @@ impl Iterator for FreeColumns {
 
 impl Connect4 {
     fn winner(&self) -> Option<PlayerId> {
-        if self.won(self.my_bb) {
+        if won(self.my_bb) {
             Some(self.player)
-        } else if self.won(self.op_bb) {
+        } else if won(self.op_bb) {
             Some(self.player.next())
         } else {
             None
         }
-    }
-
-    fn won(&self, bb: u64) -> bool {
-        let d1 = bb & (bb >> 6) & (bb >> 12) & (bb >> 18);
-        let d2 = bb & (bb >> 8) & (bb >> 16) & (bb >> 24);
-        let h = bb & (bb >> 7) & (bb >> 14) & (bb >> 21);
-        let v = bb & (bb >> 1) & (bb >> 2) & (bb >> 3);
-        v + h + d1 + d2 > 0
     }
 }
 
@@ -141,7 +193,7 @@ impl Env<WIDTH> for Connect4 {
     fn step(&mut self, action: &Self::Action) -> bool {
         let col: usize = (*action).into();
 
-        self.my_bb ^= 1 << (self.height[col] + 7 * (col as u8));
+        self.my_bb ^= 1 << (self.height[col] + (HEIGHT as u8) * (col as u8));
         self.height[col] += 1;
 
         std::mem::swap(&mut self.my_bb, &mut self.op_bb);
@@ -155,18 +207,17 @@ impl Env<WIDTH> for Connect4 {
     }
 
     fn state(&self) -> Self::State {
+        // TODO try to store this in env itself... memory for speed
         let mut s = [[[false; WIDTH]; HEIGHT]; 2];
-        let mut i = 0;
-        for bb in &[self.my_bb, self.op_bb] {
-            for row in 0..HEIGHT {
-                for col in 0..WIDTH {
-                    let index = 1 << (row + 7 * col);
-                    if bb & index != 0 {
-                        s[i][row][col] = true;
-                    }
+        for row in 0..HEIGHT {
+            for col in 0..WIDTH {
+                let index = 1 << (row + HEIGHT * col);
+                if self.my_bb & index != 0 {
+                    s[0][row][col] = true;
+                } else if self.op_bb & index != 0 {
+                    s[1][row][col] = true;
                 }
             }
-            i += 1;
         }
         s
     }
@@ -189,9 +240,9 @@ impl Env<WIDTH> for Connect4 {
 
         for row in (0..HEIGHT).rev() {
             for col in 0..WIDTH {
-                let index = 1 << (row + 7 * col);
+                let index = 1 << (row + HEIGHT * col);
                 print!(
-                    "{}",
+                    "{} ",
                     if self.my_bb & index != 0 {
                         my_char
                     } else if self.op_bb & index != 0 {
@@ -211,23 +262,53 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_connect4() {
-        let mut game = Connect4::new();
-        game.print();
-        let s = game.state();
-        assert!(s.iter().all(|&c| c == 0.0f32));
-        assert!(game.player() == PlayerId::Red);
+    fn test_horz_wins() {
+        for row in 0..HEIGHT {
+            let mut bb =
+                (1 << (row + 0)) | (1 << (row + 7)) | (1 << (row + 14)) | (1 << (row + 21));
+            for _i in 0..6 {
+                assert!(won(bb));
+                bb <<= 7;
+            }
+        }
+    }
 
-        assert!(game.step(&Column(0)) == false);
-        game.print();
-        let s = game.state();
-        assert!(s[0] == -1.0f32);
-        assert!(s[1..].iter().all(|&c| c == 0.0f32));
+    #[test]
+    fn test_vert_wins() {
+        for col in 0..WIDTH {
+            let mut bb = (1 << (7 * col + 0))
+                | (1 << (7 * col + 1))
+                | (1 << (7 * col + 2))
+                | (1 << (7 * col + 3));
+            for _i in 0..4 {
+                assert!(won(bb));
+                bb <<= 1;
+            }
+        }
+    }
 
-        assert!(game.step(&Column(2)) == false);
-        game.print();
-        let s = game.state();
-        assert!(s[0] == 1.0);
-        assert!(s[2] == -1.0);
+    #[test]
+    fn test_d1_wins() {
+        for row in 3..HEIGHT {
+            let mut bb = (1 << row) | (1 << (row + 6)) | (1 << (row + 12)) | (1 << (row + 18));
+            for _i in 0..6 {
+                assert!(won(bb));
+                bb <<= 7;
+            }
+        }
+    }
+
+    #[test]
+    fn test_d2_wins() {
+        for col in 0..6 {
+            let mut bb = (1 << (7 * col + 0))
+                | (1 << (7 * (col + 1) + 1))
+                | (1 << (7 * (col + 2) + 2))
+                | (1 << (7 * (col + 3) + 3));
+            for _i in 0..4 {
+                assert!(won(bb));
+                bb <<= 1;
+            }
+        }
     }
 }

@@ -1,8 +1,9 @@
 use crate::data::ReplayBuffer;
 use crate::envs::Env;
 use crate::mcts::MCTS;
-use crate::policies::{NNPolicy, Policy};
+use crate::policies::Policy;
 use crate::policy_impls::PolicyWithCache;
+use indicatif::{ProgressBar, ProgressStyle};
 use rand::{distributions::Distribution, distributions::WeightedIndex, Rng};
 use rand_distr::Dirichlet;
 use serde::{Deserialize, Serialize};
@@ -27,6 +28,7 @@ fn run_game<E: Env<N>, P: Policy<E, N>, R: Rng, const N: usize>(
     buffer: &mut ReplayBuffer<E, N>,
 ) {
     let start_i = buffer.vs.len();
+    // TODO one or two MCTS here?
     let mut mcts = MCTS::<E, P, N>::with_capacity(cfg.capacity, cfg.c_puct, policy);
     let mut game = E::new();
     let start_player = game.player();
@@ -85,7 +87,7 @@ fn run_game<E: Env<N>, P: Policy<E, N>, R: Rng, const N: usize>(
     // }
 }
 
-pub fn eval<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
+pub fn eval<E: Env<N>, P: Policy<E, N>, const N: usize>(
     cfg: &RolloutConfig,
     policy_a: &mut P,
     policy_b: &mut P,
@@ -108,6 +110,7 @@ pub fn eval<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
             break;
         }
     }
+    game.print();
     game.reward(player)
 }
 
@@ -124,7 +127,18 @@ pub fn gather_experience<E: Env<N>, P: Policy<E, N>, R: Rng, const N: usize>(
 
     buffer.make_room(cfg.steps);
     let target = buffer.vs.len() + cfg.steps;
+    let bar = ProgressBar::new(cfg.steps as u64);
+    bar.set_style(
+        ProgressStyle::default_bar()
+            .template("[{bar:40}] {percent}% {pos}/{len} {per_sec} {elapsed_precise}")
+            .progress_chars("|| "),
+    );
+    let mut last = buffer.curr_steps();
     while buffer.vs.len() < target {
+        buffer.new_game();
         run_game(cfg, &mut cached_policy, rng, buffer);
+        bar.inc((buffer.curr_steps() - last) as u64);
+        last = buffer.curr_steps();
     }
+    bar.finish();
 }

@@ -4,7 +4,6 @@ use crate::policies::{NNPolicy, Policy};
 use tch::{self, nn, Tensor};
 
 pub struct Connect4Net {
-    conv_1: nn::Conv2D,
     fc_1: nn::Linear,
     fc_2: nn::Linear,
     p_1: nn::Linear,
@@ -20,30 +19,27 @@ impl NNPolicy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
         assert!(state_dims.len() == 4);
         assert!(state_dims[0] == 1);
         Self {
-            conv_1: nn::conv2d(root / "conv_1", state_dims[1], 256, 4, Default::default()),
             fc_1: nn::linear(
                 root / "fc_1",
-                256 * (state_dims[2] - 3) * (state_dims[3] - 3),
-                64,
+                state_dims.iter().fold(1, |a, v| a * v),
+                32,
                 Default::default(),
             ),
-            fc_2: nn::linear(root / "fc_2", 64, 64, Default::default()),
-            p_1: nn::linear(root / "p_1", 64, 64, Default::default()),
+            fc_2: nn::linear(root / "fc_2", 32, 32, Default::default()),
+            p_1: nn::linear(root / "p_1", 32, 32, Default::default()),
             p_2: nn::linear(
                 root / "p_2",
-                64,
+                32,
                 Connect4::MAX_NUM_ACTIONS as i64,
                 Default::default(),
             ),
-            v_1: nn::linear(root / "v_1", 64, 64, Default::default()),
-            v_2: nn::linear(root / "v_2", 64, 1, Default::default()),
+            v_1: nn::linear(root / "v_1", 32, 32, Default::default()),
+            v_2: nn::linear(root / "v_2", 32, 1, Default::default()),
         }
     }
 
     fn forward(&self, xs: &Tensor) -> (Tensor, Tensor) {
         let xs = xs
-            .apply(&self.conv_1)
-            .relu()
             .flat_view()
             .apply(&self.fc_1)
             .relu()
@@ -63,9 +59,10 @@ impl Policy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
     ) -> ([f32; Connect4::MAX_NUM_ACTIONS], f32) {
         let t = tensor(xs, &Connect4::get_state_dims(), tch::Kind::Bool).to_kind(tch::Kind::Float);
         let (logits, value) = self.forward(&t);
-        let policy_ = logits.softmax(-1, tch::Kind::Float);
         let mut policy = [0.0f32; Connect4::MAX_NUM_ACTIONS];
-        policy_.copy_data(&mut policy, Connect4::MAX_NUM_ACTIONS);
+        logits
+            .softmax(-1, tch::Kind::Float)
+            .copy_data(&mut policy, Connect4::MAX_NUM_ACTIONS);
         let value = f32::from(&value);
         (policy, value)
     }

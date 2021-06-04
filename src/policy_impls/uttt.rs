@@ -32,19 +32,19 @@ impl NNPolicy<UltimateTicTacToe, { UltimateTicTacToe::MAX_NUM_ACTIONS }> for Ult
             fc_1: nn::linear(
                 root / "fc_1",
                 256 * (state_dims[2] / 3) * (state_dims[3] / 3),
-                64,
+                256,
                 Default::default(),
             ),
-            fc_2: nn::linear(root / "fc_2", 64, 64, Default::default()),
-            p_1: nn::linear(root / "p_1", 64, 64, Default::default()),
+            fc_2: nn::linear(root / "fc_2", 256, 256, Default::default()),
+            p_1: nn::linear(root / "p_1", 256, 256, Default::default()),
             p_2: nn::linear(
                 root / "p_2",
-                64,
+                256,
                 UltimateTicTacToe::MAX_NUM_ACTIONS as i64,
                 Default::default(),
             ),
-            v_1: nn::linear(root / "v_1", 64, 64, Default::default()),
-            v_2: nn::linear(root / "v_2", 64, 1, Default::default()),
+            v_1: nn::linear(root / "v_1", 256, 256, Default::default()),
+            v_2: nn::linear(root / "v_2", 256, 1, Default::default()),
         }
     }
 

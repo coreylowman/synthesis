@@ -37,7 +37,7 @@ fn train<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
     train_cfg: &TrainConfig,
     rollout_cfg: &RolloutConfig,
 ) {
-    let train_dir = train_dir(train_cfg.logs);
+    let train_dir = train_dir(train_cfg.logs, E::NAME);
     let models_dir = train_dir.join("models");
     let pgn_path = train_dir.join("results.pgn");
     let mut pgn = std::fs::File::create(&pgn_path).expect("?");
@@ -47,7 +47,7 @@ fn train<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
     save(&train_dir, "rollout_cfg.json", rollout_cfg);
     save_str(&train_dir, "env_name", &E::NAME.into());
     save_str(&train_dir, "git_hash", &git_hash());
-    save_str(&train_dir, "git_diff.txt", &git_diff());
+    save_str(&train_dir, "git_diff.patch", &git_diff());
 
     tch::manual_seed(train_cfg.seed as i64);
     let mut rng = StdRng::seed_from_u64(train_cfg.seed);
@@ -85,6 +85,8 @@ fn train<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
 
             let mut epoch_loss = [0.0, 0.0];
             for (state, target_pi, target_v) in sampler {
+                assert_eq!(state.size()[0], train_cfg.batch_size);
+
                 let legal_mask = target_pi.greater1(&tch::Tensor::zeros_like(&target_pi));
                 let illegal_value = -1e10f32 * tch::Tensor::ones_like(&target_pi);
 
@@ -103,7 +105,7 @@ fn train<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
                 epoch_loss[0] += f32::from(&pi_loss);
                 epoch_loss[1] += f32::from(&v_loss);
             }
-            // println!("{} {:?}", _i_epoch, epoch_loss);
+            println!("{} {:?}", _i_epoch, epoch_loss);
         }
 
         // evaluate against previous models
@@ -122,6 +124,15 @@ fn train<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
 
         policies.insert(&name, &vs);
         vs.save(models_dir.join(name)).unwrap();
+
+        println!(
+            "Finished iteration {} | {} games played / {} steps taken | {} games / {} steps in replay buffer",
+            i_iter,
+            buffer.total_games_played(),
+            buffer.total_steps(),
+            buffer.curr_games(),
+            buffer.curr_steps(),
+        );
     }
 }
 
@@ -129,7 +140,7 @@ fn main() {
     let train_cfg = TrainConfig {
         lr: 1e-3,
         weight_decay: 1e-5,
-        num_iterations: 100,
+        num_iterations: 200,
         num_epochs: 2,
         batch_size: 256,
         buffer_size: 16_000,
@@ -139,7 +150,7 @@ fn main() {
 
     let rollout_cfg = RolloutConfig {
         capacity: 100_000,
-        num_explores: 100,
+        num_explores: 800,
         temperature: 1.0,
         sample_action: true,
         steps: 3_200,
@@ -148,8 +159,5 @@ fn main() {
         c_puct: 4.0,
     };
 
-    train::<UltimateTicTacToe, UltimateTicTacToeNet, { UltimateTicTacToe::MAX_NUM_ACTIONS }>(
-        &train_cfg,
-        &rollout_cfg,
-    );
+    train::<Connect4, Connect4Net, { Connect4::MAX_NUM_ACTIONS }>(&train_cfg, &rollout_cfg);
 }

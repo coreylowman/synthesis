@@ -5,8 +5,9 @@ use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-pub fn train_dir(root: &'static str) -> PathBuf {
-    let path = Path::new(root).join(Local::now().format("train_%m-%d-%YT%H-%M-%SZ").to_string());
+pub fn train_dir(root: &'static str, tag: &'static str) -> PathBuf {
+    let time = Local::now().format("%m-%d-%YT%H-%M-%SZ").to_string();
+    let path = Path::new(root).join(tag).join(time);
     std::fs::create_dir_all(&path).unwrap();
     path
 }

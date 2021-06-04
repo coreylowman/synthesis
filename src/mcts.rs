@@ -80,7 +80,7 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
     pub fn add_noise(&mut self, noise: &Vec<f32>) {
         let root = &mut self.nodes[self.root - self.root];
         for i in 0..N {
-            root.action_probs[i] += noise[i];
+            root.action_probs[i] = 0.75 * root.action_probs[i] + 0.25 * noise[i];
         }
     }
 

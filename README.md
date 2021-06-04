@@ -3,6 +3,7 @@ Rust Implementation of AlphaZero
 
 https://deepmind.com/blog/article/alphazero-shedding-new-light-grand-games-chess-shogi-and-go
 
+https://www.nature.com/articles/nature24270.epdf
 TODOS
 
 - [x] conv net in rust

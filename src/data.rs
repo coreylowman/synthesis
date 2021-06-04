@@ -1,7 +1,7 @@
+use crate::envs::Env;
 use std::ffi::c_void;
 use tch::{Kind, Tensor};
 use torch_sys::at_tensor_of_data;
-use crate::envs::Env;
 
 pub struct BatchRandSampler<'a> {
     inds: Tensor,
@@ -91,6 +91,9 @@ pub fn tensor<T>(data: &[T], dims: &[i64], kind: tch::Kind) -> Tensor {
 
 pub struct ReplayBuffer<E: Env<N>, const N: usize> {
     capacity: usize,
+    game_id: usize,
+    steps: usize,
+    game_ids: Vec<usize>,
     pub states: Vec<E::State>,
     pub pis: Vec<[f32; N]>,
     pub vs: Vec<f32>,
@@ -100,13 +103,40 @@ impl<E: Env<N>, const N: usize> ReplayBuffer<E, N> {
     pub fn new(n: usize) -> Self {
         Self {
             capacity: n,
+            game_id: 0,
+            steps: 0,
+            game_ids: Vec::with_capacity(n),
             states: Vec::with_capacity(n),
             pis: Vec::with_capacity(n),
             vs: Vec::with_capacity(n),
         }
     }
 
+    pub fn new_game(&mut self) {
+        self.game_id += 1;
+    }
+
+    pub fn total_games_played(&self) -> usize {
+        self.game_id
+    }
+
+    pub fn curr_games(&self) -> usize {
+        let mut unique = self.game_ids.clone();
+        unique.dedup();
+        unique.len()
+    }
+
+    pub fn total_steps(&self) -> usize {
+        self.steps
+    }
+
+    pub fn curr_steps(&self) -> usize {
+        self.vs.len()
+    }
+
     pub fn add(&mut self, state: &E::State, pi: &[f32; N], v: f32) {
+        self.game_ids.push(self.game_id);
+        self.steps += 1;
         self.states.push(state.clone());
         self.pis.push(pi.clone());
         self.vs.push(v);
@@ -115,6 +145,7 @@ impl<E: Env<N>, const N: usize> ReplayBuffer<E, N> {
     pub fn make_room(&mut self, n: usize) {
         if self.vs.len() + n > self.capacity {
             let num_to_drop = self.vs.len() + n - self.capacity;
+            drop(self.game_ids.drain(0..num_to_drop));
             drop(self.states.drain(0..(num_to_drop)));
             drop(self.pis.drain(0..(num_to_drop)));
             drop(self.vs.drain(0..(num_to_drop)));
