@@ -11,7 +11,7 @@ This repo is a cargo workspace made up of multiple crates & binaries:
 - slimnn: A small neural network crate in pure rust
 - ragz: The main crate with all the main training logic in it
 - riches: A binary that uses the ragz library
-- plunder: A binary that saves pytorch weights into a format slimnn can understand
+- invest: A binary that saves pytorch weights into a format slimnn can understand
 
 TODOS
 

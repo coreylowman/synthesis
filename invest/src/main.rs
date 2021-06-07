@@ -24,13 +24,9 @@ fn serialize_tensors<P: AsRef<Path>>(
         vs.len()
     ))?;
     for (i, (key, value)) in vs.iter().enumerate() {
-        println!("{}", key);
-        f.write_fmt(format_args!(
-            "// {} - {}\n\"{}\",\n",
-            key,
-            i,
-            serialize_tensor(&value),
-        ))?;
+        let str_tensor = serialize_tensor(&value);
+        println!("{} - {}", key, str_tensor.len());
+        f.write_fmt(format_args!("// {} - {}\n\"{}\",\n", key, i, str_tensor,))?;
     }
     f.write(b"];\n")?;
     Ok(())

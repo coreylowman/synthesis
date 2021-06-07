@@ -1,5 +1,5 @@
 [package]
-name = "plunder"
+name = "invest"
 version = "0.1.0"
 authors = ["Corey Lowman <clowman1993@gmail.com>"]
 edition = "2018"

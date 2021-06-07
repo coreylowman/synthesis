@@ -5,11 +5,11 @@ use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-pub fn train_dir(root: &'static str, tag: &'static str) -> PathBuf {
+pub fn train_dir(root: &'static str, tag: &'static str) -> std::io::Result<PathBuf> {
     let time = Local::now().format("%m-%d-%YT%H-%M-%SZ").to_string();
     let path = Path::new(root).join(tag).join(time);
-    std::fs::create_dir_all(&path).unwrap();
-    path
+    std::fs::create_dir_all(&path)?;
+    Ok(path)
 }
 
 pub fn save<T: Serialize>(
@@ -59,8 +59,7 @@ pub fn add_pgn_result(
         "1/2-1/2"
     };
     write!(pgn, "[Result \"{}\"]\n", result)?;
-    write!(pgn, "{}\n", result)?;
-    Ok(())
+    write!(pgn, "{}\n", result)
 }
 
 pub fn calculate_ratings(dir: &PathBuf) -> Result<(), std::io::Error> {

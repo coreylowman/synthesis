@@ -5,6 +5,6 @@ members = [
     "slimnn",
     "ragz",
     "riches",
-    "plunder",
+    "invest",
 ]
 default-run = "riches"

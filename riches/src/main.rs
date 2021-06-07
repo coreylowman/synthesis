@@ -29,7 +29,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         c_puct: 4.0,
     };
 
-    train::<Connect4, Connect4Net, { Connect4::MAX_NUM_ACTIONS }>(&train_cfg, &rollout_cfg)?;
-
-    Ok(())
+    train::<Connect4, Connect4Net, { Connect4::MAX_NUM_ACTIONS }>(&train_cfg, &rollout_cfg)
 }

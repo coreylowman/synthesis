@@ -37,7 +37,7 @@ pub fn train<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
     train_cfg: &TrainConfig,
     rollout_cfg: &RolloutConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let train_dir = train_dir(train_cfg.logs, E::NAME);
+    let train_dir = train_dir(train_cfg.logs, E::NAME)?;
     let models_dir = train_dir.join("_models");
     let pgn_path = train_dir.join("results.pgn");
     let mut pgn = std::fs::File::create(&pgn_path)?;
