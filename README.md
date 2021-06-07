@@ -33,7 +33,7 @@ TODOS
 - [ ] recalculate best child while backproping
 - [ ] multiple rollout processes
 - [ ] multiple threads for MCTS
-- [ ] rollout & eval separate processes
+- [x] rollout & eval separate processes
 - [x] self play ELO
 - [x] library for NN CPU execution & serialization/deserialization to string
 - [x] improve NN specification & log NN structure

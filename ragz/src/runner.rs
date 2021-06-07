@@ -76,10 +76,6 @@ fn run_game<E: Env<N>, P: Policy<E, N>, R: Rng, const N: usize>(
         buffer.vs[i] = r;
         r *= -1.0;
     }
-    // if game.reward(game.player()) != 0.0 {
-    //     assert!(game.reward(game.player()) == -1.0);
-    //     assert!(buffer.vs[buffer.vs.len() - 1] == 1.0);
-    // }
 }
 
 pub fn eval<E: Env<N>, P: Policy<E, N>, const N: usize>(
@@ -89,25 +85,24 @@ pub fn eval<E: Env<N>, P: Policy<E, N>, const N: usize>(
 ) -> f32 {
     let mut game = E::new();
     let player = game.player();
-    let mut mcts_a =
-        MCTS::<E, P, N>::with_capacity(cfg.capacity, cfg.c_puct, policy_a, game.clone());
-    let mut mcts_b =
-        MCTS::<E, P, N>::with_capacity(cfg.capacity, cfg.c_puct, policy_b, game.clone());
     loop {
-        let action = if game.player() == player {
-            mcts_a.explore_n(cfg.num_explores);
-            mcts_a.best_action()
-        } else {
-            mcts_b.explore_n(cfg.num_explores);
-            mcts_b.best_action()
-        };
-        mcts_a.step_action(&action);
-        mcts_b.step_action(&action);
+        let mut mcts = MCTS::<E, P, N>::with_capacity(
+            cfg.num_explores,
+            cfg.c_puct,
+            if game.player() == player {
+                policy_a
+            } else {
+                policy_b
+            },
+            game.clone(),
+        );
+        mcts.explore_n(cfg.num_explores);
+        let action = mcts.best_action();
         if game.step(&action) {
             break;
         }
     }
-    game.print();
+    // game.print();
     game.reward(player)
 }
 

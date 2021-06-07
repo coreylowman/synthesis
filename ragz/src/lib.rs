@@ -11,6 +11,7 @@ use crate::env::*;
 use crate::policies::*;
 pub use crate::runner::RolloutConfig;
 use crate::runner::*;
+pub use crate::utils::train_dir;
 use crate::utils::*;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -21,7 +22,7 @@ use tch::{
     nn::{Adam, OptimizerConfig, VarStore},
 };
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TrainConfig {
     pub lr: f64,
     pub weight_decay: f64,
@@ -30,29 +31,75 @@ pub struct TrainConfig {
     pub batch_size: i64,
     pub buffer_size: usize,
     pub seed: u64,
-    pub logs: &'static str,
+    pub logs: std::path::PathBuf,
 }
 
-pub fn train<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
+pub fn evaluator<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
+    train_cfg: TrainConfig,
+    rollout_cfg: RolloutConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let models_dir = train_cfg.logs.join("models");
+    let pgn_path = train_cfg.logs.join("results.pgn");
+
+    let mut pgn = std::fs::File::create(&pgn_path)?;
+    let mut policies = PolicyStorage::<E, P, N>::with_capacity(train_cfg.num_iterations);
+    let mut vs = VarStore::new(tch::Device::Cpu);
+    let mut policy = P::new(&vs);
+    let mut name = String::from("model_0.ot");
+    let _guard = tch::no_grad_guard();
+
+    // load first policy
+    while !models_dir.join(&name).exists() {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    }
+    vs.load(models_dir.join(&name))?;
+    policies.insert(&name, &vs);
+
+    for i_iter in 0..train_cfg.num_iterations {
+        name = format!("model_{}.ot", i_iter + 1);
+
+        // wait for model to exist;
+        while !models_dir.join(&name).exists() {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
+        vs.load(models_dir.join(&name))?;
+
+        // evaluate against old policies
+        for old_name in policies.last(50) {
+            let mut old_p = policies.get(old_name);
+            let white_reward = eval(&rollout_cfg, &mut policy, &mut old_p);
+            let black_reward = eval(&rollout_cfg, &mut old_p, &mut policy);
+            add_pgn_result(&mut pgn, &name, old_name, white_reward)?;
+            add_pgn_result(&mut pgn, old_name, &name, black_reward)?;
+        }
+
+        // update results
+        calculate_ratings(&train_cfg.logs)?;
+        plot_ratings(&train_cfg.logs)?;
+
+        policies.insert(&name, &vs);
+    }
+
+    Ok(())
+}
+
+pub fn trainer<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
     train_cfg: &TrainConfig,
     rollout_cfg: &RolloutConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let train_dir = train_dir(train_cfg.logs, E::NAME)?;
-    let models_dir = train_dir.join("_models");
-    let pgn_path = train_dir.join("results.pgn");
-    let mut pgn = std::fs::File::create(&pgn_path)?;
+    std::fs::create_dir_all(&train_cfg.logs)?;
+    let models_dir = train_cfg.logs.join("models");
 
     std::fs::create_dir(&models_dir)?;
-    save(&train_dir, "train_cfg.json", train_cfg)?;
-    save(&train_dir, "rollout_cfg.json", rollout_cfg)?;
-    save_str(&train_dir, "env_name", &E::NAME.into())?;
-    save_str(&train_dir, "git_hash", &git_hash()?)?;
-    save_str(&train_dir, "git_diff.patch", &git_diff()?)?;
+    save(&train_cfg.logs, "train_cfg.json", train_cfg)?;
+    save(&train_cfg.logs, "rollout_cfg.json", rollout_cfg)?;
+    save_str(&train_cfg.logs, "env_name", &E::NAME.into())?;
+    save_str(&train_cfg.logs, "git_hash", &git_hash()?)?;
+    save_str(&train_cfg.logs, "git_diff.patch", &git_diff()?)?;
 
     tch::manual_seed(train_cfg.seed as i64);
     let mut rng = StdRng::seed_from_u64(train_cfg.seed);
 
-    let mut policies = PolicyStorage::with_capacity(train_cfg.num_iterations);
     let mut buffer = ReplayBuffer::<E, N>::new(train_cfg.buffer_size);
 
     let vs = VarStore::new(tch::Device::Cpu);
@@ -62,9 +109,8 @@ pub fn train<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
 
     let mut dims = E::get_state_dims();
 
-    let mut name = String::from("model_0.ot");
-    policies.insert(&name, &vs);
-    vs.save(models_dir.join(name))?;
+    vs.save(models_dir.join(String::from("model_0.ot")))?;
+
     for i_iter in 0..train_cfg.num_iterations {
         // gather data
         {
@@ -108,26 +154,12 @@ pub fn train<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
             println!("{} {:?}", _i_epoch, epoch_loss);
         }
 
-        // evaluate against previous models
-        {
-            let _guard = tch::no_grad_guard();
-            name = format!("model_{}.ot", i_iter + 1);
-            for old_name in policies.last(50) {
-                let mut old_p = policies.get(old_name);
-                let white_reward = eval(rollout_cfg, &mut policy, &mut old_p);
-                let black_reward = eval(rollout_cfg, &mut old_p, &mut policy);
-                add_pgn_result(&mut pgn, &name, old_name, white_reward)?;
-                add_pgn_result(&mut pgn, old_name, &name, black_reward)?;
-            }
-            calculate_ratings(&train_dir)?;
-        }
-
-        policies.insert(&name, &vs);
-        vs.save(models_dir.join(name))?;
+        // save latest weights
+        vs.save(models_dir.join(format!("model_{}.ot", i_iter + 1)))?;
 
         println!(
             "Finished iteration {} | {} games played / {} steps taken | {} games / {} steps in replay buffer",
-            i_iter,
+            i_iter + 1,
             buffer.total_games_played(),
             buffer.total_steps(),
             buffer.curr_games(),

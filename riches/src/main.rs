@@ -4,18 +4,19 @@ mod policy_impls;
 use crate::envs::*;
 use crate::policy_impls::*;
 use ragz::prelude::*;
-use ragz::{train, RolloutConfig, TrainConfig};
+use ragz::{evaluator, train_dir, trainer, RolloutConfig, TrainConfig};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn run<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
+) -> Result<(), Box<dyn std::error::Error>> {
     let train_cfg = TrainConfig {
         lr: 1e-3,
         weight_decay: 1e-5,
         num_iterations: 200,
-        num_epochs: 2,
+        num_epochs: 8,
         batch_size: 256,
         buffer_size: 16_000,
         seed: 0,
-        logs: "./_logs",
+        logs: train_dir("./_logs", E::NAME)?,
     };
 
     let rollout_cfg = RolloutConfig {
@@ -29,5 +30,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         c_puct: 4.0,
     };
 
-    train::<Connect4, Connect4Net, { Connect4::MAX_NUM_ACTIONS }>(&train_cfg, &rollout_cfg)
+    let eval_train_cfg = train_cfg.clone();
+    let eval_rollout_cfg = rollout_cfg.clone();
+    let eval_handle =
+        std::thread::spawn(move || evaluator::<E, P, N>(eval_train_cfg, eval_rollout_cfg).unwrap());
+    trainer::<E, P, N>(&train_cfg, &rollout_cfg)?;
+    eval_handle.join().unwrap();
+    Ok(())
+}
+
+fn main() {
+    run::<Connect4, Connect4Net, { Connect4::MAX_NUM_ACTIONS }>().unwrap()
 }

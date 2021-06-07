@@ -3,13 +3,12 @@ use serde::Serialize;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
+use std::process::ExitStatus;
 use std::process::{Command, Stdio};
 
 pub fn train_dir(root: &'static str, tag: &'static str) -> std::io::Result<PathBuf> {
     let time = Local::now().format("%m-%d-%YT%H-%M-%SZ").to_string();
-    let path = Path::new(root).join(tag).join(time);
-    std::fs::create_dir_all(&path)?;
-    Ok(path)
+    Ok(Path::new(root).join(tag).join(time))
 }
 
 pub fn save<T: Serialize>(
@@ -62,7 +61,7 @@ pub fn add_pgn_result(
     write!(pgn, "{}\n", result)
 }
 
-pub fn calculate_ratings(dir: &PathBuf) -> Result<(), std::io::Error> {
+pub fn calculate_ratings(dir: &PathBuf) -> std::io::Result<()> {
     let mut child = Command::new("bayeselo.exe")
         .current_dir(dir)
         .stdin(Stdio::piped())
@@ -78,5 +77,14 @@ pub fn calculate_ratings(dir: &PathBuf) -> Result<(), std::io::Error> {
     write!(stdin, "x\n")?;
     write!(stdin, "x\n")?;
     child.wait()?;
+    Ok(())
+}
+
+pub fn plot_ratings(dir: &PathBuf) -> std::io::Result<()> {
+    let output = Command::new("python")
+        .arg("plot_ratings.py")
+        .arg(dir.join("ratings").to_str().unwrap())
+        .status()?;
+    assert!(output.success());
     Ok(())
 }
