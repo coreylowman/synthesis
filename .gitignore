@@ -1,4 +1,4 @@
 /target
-/logs
+/_logs
 /.vscode
-/models
+/_models
