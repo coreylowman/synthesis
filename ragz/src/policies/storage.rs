@@ -1,46 +1,49 @@
-use super::traits::{NNPolicy, Policy};
+use super::traits::Policy;
 use crate::env::Env;
-use std::{collections::HashMap, marker::PhantomData};
-use tch::nn::VarStore;
+use std::marker::PhantomData;
 
-pub struct PolicyStorage<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize> {
-    pub store: HashMap<String, VarStore>,
+pub struct PolicyStorage<E: Env<N>, P: Policy<E, N>, const N: usize> {
+    pub store: Vec<P>,
     pub names: Vec<String>,
     _env_marker: PhantomData<E>,
     _policy_marker: PhantomData<P>,
 }
 
-impl<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize> PolicyStorage<E, P, N> {
+impl<E: Env<N>, P: Policy<E, N>, const N: usize> PolicyStorage<E, P, N> {
     pub fn with_capacity(n: usize) -> Self {
         Self {
-            store: HashMap::with_capacity(n),
+            store: Vec::with_capacity(n),
             names: Vec::with_capacity(n),
             _env_marker: PhantomData,
             _policy_marker: PhantomData,
         }
     }
 
-    pub fn insert(&mut self, name: &String, vs: &VarStore) {
-        let mut stored_vs = VarStore::new(tch::Device::Cpu);
-        let _policy = P::new(&stored_vs);
-        stored_vs.copy(vs).unwrap();
-        self.store.insert(name.clone(), stored_vs);
-        self.names.push(name.clone());
+    pub fn insert(&mut self, name: String, policy: P) {
+        self.store.push(policy);
+        self.names.push(name);
     }
 
-    pub fn get(&self, name: &String) -> P {
-        let mut vs = VarStore::new(tch::Device::Cpu);
-        let policy = P::new(&vs);
-        let src_vs = self.store.get(name).unwrap();
-        vs.copy(src_vs).unwrap();
-        policy
+    pub fn keep(&mut self, n: usize) {
+        if self.names.len() >= n {
+            let num_to_drop = self.names.len() - n;
+            drop(self.names.drain(0..num_to_drop));
+            drop(self.store.drain(0..num_to_drop));
+        }
     }
 
-    pub fn last(&self, n: usize) -> &[String] {
+    pub fn get(&mut self, name: &String) -> Option<&mut P> {
+        match self.names.iter().position(|s| s == name) {
+            Some(i) => Some(&mut self.store[i]),
+            None => None,
+        }
+    }
+
+    pub fn last(&self, n: usize) -> std::ops::Range<usize> {
         if self.names.len() < n {
-            &self.names[..]
+            0..self.names.len()
         } else {
-            &self.names[(self.names.len() - n)..]
+            (self.names.len() - n)..self.names.len()
         }
     }
 }

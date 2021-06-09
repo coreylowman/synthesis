@@ -3,7 +3,6 @@ use serde::Serialize;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
-use std::process::ExitStatus;
 use std::process::{Command, Stdio};
 
 pub fn train_dir(root: &'static str, tag: &'static str) -> std::io::Result<PathBuf> {

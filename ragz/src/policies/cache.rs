@@ -19,3 +19,21 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> Policy<E, N> for PolicyWith
         }
     }
 }
+
+pub struct OwnedPolicyWithCache<E: Env<N>, P: Policy<E, N>, const N: usize> {
+    pub policy: P,
+    pub cache: HashMap<E::State, ([f32; N], f32)>,
+}
+
+impl<E: Env<N>, P: Policy<E, N>, const N: usize> Policy<E, N> for OwnedPolicyWithCache<E, P, N> {
+    fn eval(&mut self, state: &E::State) -> ([f32; N], f32) {
+        match self.cache.get(state) {
+            Some(&(pi, v)) => (pi, v),
+            None => {
+                let (pi, v) = self.policy.eval(state);
+                self.cache.insert(state.clone(), (pi, v));
+                (pi, v)
+            }
+        }
+    }
+}

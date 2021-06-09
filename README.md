@@ -42,3 +42,4 @@ TODOS
 - [ ] improve state/action for breakthrough
 - [ ] play against trained model in CLI
 - [ ] MAE instead of MSE? 1 epoch instead of 2?
+

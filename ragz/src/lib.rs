@@ -5,6 +5,7 @@ pub mod policies;
 pub mod prelude;
 mod runner;
 mod utils;
+mod vanilla_mcts;
 
 use crate::data::*;
 use crate::env::*;
@@ -16,6 +17,7 @@ use crate::utils::*;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::default::Default;
 use tch::{
     kind::Kind,
@@ -40,44 +42,78 @@ pub fn evaluator<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let models_dir = train_cfg.logs.join("models");
     let pgn_path = train_cfg.logs.join("results.pgn");
-
     let mut pgn = std::fs::File::create(&pgn_path)?;
-    let mut policies = PolicyStorage::<E, P, N>::with_capacity(train_cfg.num_iterations);
-    let mut vs = VarStore::new(tch::Device::Cpu);
-    let mut policy = P::new(&vs);
-    let mut name = String::from("model_0.ot");
     let _guard = tch::no_grad_guard();
+    let first_player = E::new().player();
+    let all_explores = [100, 200, 400, 800, 1600, 3200, 6400, 12800];
 
     // load first policy
-    while !models_dir.join(&name).exists() {
-        std::thread::sleep(std::time::Duration::from_secs(1));
-    }
-    vs.load(models_dir.join(&name))?;
-    policies.insert(&name, &vs);
-
-    for i_iter in 0..train_cfg.num_iterations {
-        name = format!("model_{}.ot", i_iter + 1);
-
-        // wait for model to exist;
+    {
+        let name = String::from("model_0.ot");
         while !models_dir.join(&name).exists() {
+            println!("Waiting for {}", name);
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
-        vs.load(models_dir.join(&name))?;
 
-        // evaluate against old policies
-        for old_name in policies.last(50) {
-            let mut old_p = policies.get(old_name);
-            let white_reward = eval(&rollout_cfg, &mut policy, &mut old_p);
-            let black_reward = eval(&rollout_cfg, &mut old_p, &mut policy);
-            add_pgn_result(&mut pgn, &name, old_name, white_reward)?;
-            add_pgn_result(&mut pgn, old_name, &name, black_reward)?;
+        println!("Loading {}", name);
+        let mut vs = VarStore::new(tch::Device::Cpu);
+        let policy = P::new(&vs);
+        vs.load(models_dir.join(&name))?;
+        let mut policy = OwnedPolicyWithCache {
+            policy,
+            cache: HashMap::with_capacity(100_000),
+        };
+
+        let result = eval_against_random(&rollout_cfg, &mut policy, first_player);
+        add_pgn_result(&mut pgn, &name, &String::from("Random"), result)?;
+        let result = eval_against_random(&rollout_cfg, &mut policy, first_player.next());
+        add_pgn_result(&mut pgn, &String::from("Random"), &name, result)?;
+
+        for &explores in &all_explores {
+            let result =
+                eval_against_vanilla_mcts(&rollout_cfg, &mut policy, first_player, explores);
+            add_pgn_result(&mut pgn, &name, &format!("VanillaMCTS{}", explores), result)?;
+            let result =
+                eval_against_vanilla_mcts(&rollout_cfg, &mut policy, first_player.next(), explores);
+            add_pgn_result(&mut pgn, &format!("VanillaMCTS{}", explores), &name, result)?;
+        }
+    }
+
+    for i_iter in 0..train_cfg.num_iterations {
+        // wait for model to exist;
+        let name = format!("model_{}.ot", i_iter + 1);
+        while !models_dir.join(&name).exists() {
+            println!("Waiting for {}", name);
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
+
+        // load model
+        println!("Loading {}", name);
+        let mut vs = VarStore::new(tch::Device::Cpu);
+        let policy = P::new(&vs);
+        vs.load(models_dir.join(&name))?;
+        let mut policy = OwnedPolicyWithCache {
+            policy,
+            cache: HashMap::with_capacity(100_000),
+        };
+
+        let result = eval_against_random(&rollout_cfg, &mut policy, first_player);
+        add_pgn_result(&mut pgn, &name, &String::from("Random"), result)?;
+        let result = eval_against_random(&rollout_cfg, &mut policy, first_player.next());
+        add_pgn_result(&mut pgn, &String::from("Random"), &name, result)?;
+
+        for &explores in &all_explores {
+            let result =
+                eval_against_vanilla_mcts(&rollout_cfg, &mut policy, first_player, explores);
+            add_pgn_result(&mut pgn, &name, &format!("VanillaMCTS{}", explores), result)?;
+            let result =
+                eval_against_vanilla_mcts(&rollout_cfg, &mut policy, first_player.next(), explores);
+            add_pgn_result(&mut pgn, &format!("VanillaMCTS{}", explores), &name, result)?;
         }
 
         // update results
         calculate_ratings(&train_cfg.logs)?;
         plot_ratings(&train_cfg.logs)?;
-
-        policies.insert(&name, &vs);
     }
 
     Ok(())

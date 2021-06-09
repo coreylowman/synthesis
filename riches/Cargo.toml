@@ -10,3 +10,4 @@ edition = "2018"
 ragz = { path = "../ragz" }
 slimnn = { path = "../slimnn" }
 tch = "0.4.1"
+rand = "0.8.3"
