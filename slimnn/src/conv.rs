@@ -15,15 +15,24 @@ impl<
         const KERNEL_SIZE: usize,
         const PADDING: usize,
         const STRIDE: usize,
-    > Conv2d<NUM_CHAN_IN, NUM_CHAN_OUT, KERNEL_SIZE, PADDING, STRIDE>
+    > Default for Conv2d<NUM_CHAN_IN, NUM_CHAN_OUT, KERNEL_SIZE, PADDING, STRIDE>
 {
-    pub fn new() -> Self {
+    fn default() -> Self {
         Self {
             weight: [[[[0.0; KERNEL_SIZE]; KERNEL_SIZE]; NUM_CHAN_IN]; NUM_CHAN_OUT],
             bias: [0.0; NUM_CHAN_OUT],
         }
     }
+}
 
+impl<
+        const NUM_CHAN_IN: usize,
+        const NUM_CHAN_OUT: usize,
+        const KERNEL_SIZE: usize,
+        const PADDING: usize,
+        const STRIDE: usize,
+    > Conv2d<NUM_CHAN_IN, NUM_CHAN_OUT, KERNEL_SIZE, PADDING, STRIDE>
+{
     pub fn forward<const W_IN: usize, const H_IN: usize, const W_OUT: usize, const H_OUT: usize>(
         &self,
         x: &[[[f32; W_IN]; H_IN]; NUM_CHAN_IN],
@@ -67,7 +76,7 @@ mod tests {
 
     #[test]
     fn test_channels() {
-        let mut conv = Conv2d::<2, 3, 3, 0, 1>::new();
+        let mut conv: Conv2d<2, 3, 3, 0, 1> = Default::default();
         conv.weight = [
             [
                 [
@@ -132,7 +141,7 @@ mod tests {
 
     #[test]
     fn test_pad0_stride1() {
-        let mut conv = Conv2d::<1, 2, 2, 0, 1>::new();
+        let mut conv: Conv2d<1, 2, 2, 0, 1> = Default::default();
         conv.weight = [
             [[[-0.32677823, -0.05076015], [-0.05067509, -0.4386055]]],
             [[[0.03580105, -0.22968405], [-0.0093717, -0.02110344]]],
@@ -159,7 +168,7 @@ mod tests {
 
     #[test]
     fn test_pad1_stride1() {
-        let mut conv = Conv2d::<1, 2, 3, 1, 1>::new();
+        let mut conv: Conv2d<1, 2, 3, 1, 1> = Default::default();
         conv.weight = [
             [[
                 [0.1022217, -0.2990429, -0.00128791],
@@ -207,7 +216,7 @@ mod tests {
 
     #[test]
     fn test_pad1_stride1_v2() {
-        let mut conv = Conv2d::<1, 2, 2, 1, 1>::new();
+        let mut conv: Conv2d<1, 2, 2, 1, 1> = Default::default();
         conv.weight = [
             [[[-0.05767131, 0.29223222], [0.12310421, 0.4551205]]],
             [[[-0.42312527, -0.10522532], [-0.44393647, -0.34403402]]],
@@ -249,7 +258,7 @@ mod tests {
 
     #[test]
     fn test_pad1_stride3() {
-        let mut conv = Conv2d::<2, 4, 3, 1, 3>::new();
+        let mut conv: Conv2d<2, 4, 3, 1, 3> = Default::default();
         conv.weight = [
             [
                 [
