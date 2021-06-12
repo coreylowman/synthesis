@@ -15,11 +15,11 @@ use std::collections::HashMap;
 pub struct RolloutConfig {
     pub capacity: usize,
     pub num_explores: usize,
-    pub temperature: f32,
-    pub sample_action: bool,
+    pub sample_action_until: usize,
     pub steps: usize,
     pub alpha: f32,
     pub noisy_explore: bool,
+    pub noise_weight: f32,
     pub c_puct: f32,
 }
 
@@ -29,19 +29,20 @@ fn run_game<E: Env<N>, P: Policy<E, N>, R: Rng, const N: usize>(
     rng: &mut R,
     buffer: &mut ReplayBuffer<E, N>,
 ) {
-    let start_i = buffer.vs.len();
     let mut game = E::new();
-    let start_player = game.player();
     let mut is_over = false;
     let mut search_policy = [0.0; N];
+    let mut num_turns = 0;
+    let start_i = buffer.vs.len();
     let dirichlet = Dirichlet::new(&[cfg.alpha; N]).unwrap();
+    let start_player = game.player();
 
     while !is_over {
         let mut mcts =
-            MCTS::<E, P, N>::with_capacity(cfg.num_explores, cfg.c_puct, policy, game.clone());
+            MCTS::<E, P, N>::with_capacity(cfg.num_explores + 1, cfg.c_puct, policy, game.clone());
 
         if cfg.noisy_explore {
-            mcts.add_noise(&dirichlet.sample(rng));
+            mcts.add_noise(&dirichlet.sample(rng), cfg.noise_weight);
         }
 
         mcts.explore_n(cfg.num_explores);
@@ -53,17 +54,17 @@ fn run_game<E: Env<N>, P: Policy<E, N>, R: Rng, const N: usize>(
         search_policy.fill(0.0);
         for &(action, child_id) in root_node.children.iter() {
             let child = mcts.get_node(child_id);
-            let value = child.num_visits.powf(1.0 / cfg.temperature);
-            search_policy[action.into()] = value;
-            total += value;
+            search_policy[action.into()] = child.num_visits;
+            total += child.num_visits;
         }
         for i in 0..N {
             search_policy[i] /= total;
         }
 
+        // root_node.cum_value / root_node.num_visits,
         buffer.add(mcts.root_state(), &search_policy, 0.0);
 
-        let action = if cfg.sample_action {
+        let action = if num_turns < cfg.sample_action_until {
             let dist = WeightedIndex::new(&search_policy).unwrap();
             let choice = dist.sample(rng);
             E::Action::from(choice)
@@ -72,41 +73,16 @@ fn run_game<E: Env<N>, P: Policy<E, N>, R: Rng, const N: usize>(
         };
 
         is_over = game.step(&action);
+        num_turns += 1;
     }
+
+    assert!(num_turns > cfg.sample_action_until);
 
     let mut r = game.reward(start_player);
     for i in start_i..buffer.vs.len() {
         buffer.vs[i] = r;
         r *= -1.0;
     }
-}
-
-pub fn eval<E: Env<N>, P: Policy<E, N>, const N: usize>(
-    cfg: &RolloutConfig,
-    policy_a: &mut P,
-    policy_b: &mut P,
-) -> f32 {
-    let mut game = E::new();
-    let first_player = game.player();
-    loop {
-        let mut mcts = MCTS::<E, P, N>::with_capacity(
-            cfg.num_explores,
-            cfg.c_puct,
-            if game.player() == first_player {
-                policy_a
-            } else {
-                policy_b
-            },
-            game.clone(),
-        );
-        mcts.explore_n(cfg.num_explores);
-        let action = mcts.best_action();
-        if game.step(&action) {
-            break;
-        }
-    }
-    // game.print();
-    game.reward(first_player)
 }
 
 pub fn eval_against_random<E: Env<N>, P: Policy<E, N>, const N: usize>(
@@ -119,8 +95,12 @@ pub fn eval_against_random<E: Env<N>, P: Policy<E, N>, const N: usize>(
     let mut opponent = StdRng::seed_from_u64(0);
     loop {
         let action = if game.player() == player {
-            let mut mcts =
-                MCTS::<E, P, N>::with_capacity(cfg.num_explores, cfg.c_puct, policy, game.clone());
+            let mut mcts = MCTS::<E, P, N>::with_capacity(
+                cfg.num_explores + 1,
+                cfg.c_puct,
+                policy,
+                game.clone(),
+            );
             mcts.explore_n(cfg.num_explores);
             mcts.best_action()
         } else {
@@ -144,18 +124,23 @@ pub fn eval_against_vanilla_mcts<E: Env<N>, P: Policy<E, N>, const N: usize>(
 ) -> f32 {
     let mut game = E::new();
     let first_player = game.player();
-    let mut opponent = VanillaMCTS::<E, N>::with_capacity(cfg.capacity, game.clone(), 0);
+    let mut rng = StdRng::seed_from_u64(0);
     loop {
         let action = if game.player() == player {
-            let mut mcts =
-                MCTS::<E, P, N>::with_capacity(cfg.num_explores, cfg.c_puct, policy, game.clone());
+            let mut mcts = MCTS::<E, P, N>::with_capacity(
+                cfg.num_explores + 1,
+                cfg.c_puct,
+                policy,
+                game.clone(),
+            );
             mcts.explore_n(cfg.num_explores);
             mcts.best_action()
         } else {
-            opponent.explore_n(opponent_explores);
-            opponent.best_action()
+            let mut mcts =
+                VanillaMCTS::<E, N>::with_capacity(opponent_explores + 1, game.clone(), &mut rng);
+            mcts.explore_n(opponent_explores);
+            mcts.best_action()
         };
-        opponent.step_action(&action);
 
         if game.step(&action) {
             break;
