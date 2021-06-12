@@ -1,5 +1,5 @@
 use crate::env::Env;
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use rand::{rngs::StdRng, Rng};
 use std::time::{Duration, Instant};
 
 pub struct Node<E: Env<N>, const N: usize> {
@@ -29,18 +29,18 @@ impl<E: Env<N>, const N: usize> Node<E, N> {
     }
 }
 
-pub struct VanillaMCTS<E: Env<N>, const N: usize> {
+pub struct VanillaMCTS<'a, E: Env<N>, const N: usize> {
     pub root: usize,
     pub nodes: Vec<Node<E, N>>,
-    pub rng: StdRng,
+    pub rng: &'a mut StdRng,
 }
 
-impl<E: Env<N>, const N: usize> VanillaMCTS<E, N> {
-    pub fn with_capacity(capacity: usize, env: E, seed: u64) -> Self {
+impl<'a, E: Env<N>, const N: usize> VanillaMCTS<'a, E, N> {
+    pub fn with_capacity(capacity: usize, env: E, rng: &'a mut StdRng) -> Self {
         let mut mcts = Self {
             root: 0,
             nodes: Vec::with_capacity(capacity),
-            rng: StdRng::seed_from_u64(seed),
+            rng,
         };
 
         let value = mcts.rollout(env.clone(), env.is_over());
@@ -52,32 +52,6 @@ impl<E: Env<N>, const N: usize> VanillaMCTS<E, N> {
 
     fn next_node_id(&self) -> usize {
         self.nodes.len() + self.root
-    }
-
-    pub fn step_action(&mut self, action: &E::Action) {
-        // note: this function attempts to drop obviously unused nodes in order to reduce memory usage
-        self.root = match self.nodes[self.root - self.root]
-            .children
-            .iter()
-            .position(|(a, _)| a == action)
-        {
-            Some(action_index) => {
-                let (_a, new_root) = self.nodes[self.root - self.root].children[action_index];
-                drop(self.nodes.drain(0..new_root - self.root));
-                new_root
-            }
-            None => {
-                let mut env = self.nodes[self.root - self.root].env.clone();
-                let is_over = env.step(action);
-                let value = self.rollout(env.clone(), is_over);
-                let child_node = Node::new(0, env, is_over, value);
-                self.nodes.clear();
-                self.nodes.push(child_node);
-                0
-            }
-        };
-
-        self.nodes[0].parent = self.root;
     }
 
     pub fn best_action(&self) -> E::Action {
@@ -157,7 +131,7 @@ impl<E: Env<N>, const N: usize> VanillaMCTS<E, N> {
 
         let mut best_child_id = self.root;
         let mut best_value = -std::f32::INFINITY;
-        for &(action, child_id) in &node.children {
+        for &(_action, child_id) in &node.children {
             let child = &self.nodes[child_id - self.root];
             // NOTE: -child.cum_value because child.cum_value is in opponent's win pct, so we want to convert to ours
             let value = -child.cum_value / child.num_visits + visits / (1.0 + child.num_visits);

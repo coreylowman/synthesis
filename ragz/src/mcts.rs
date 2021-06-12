@@ -76,10 +76,11 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
         self.nodes.len() + self.root
     }
 
-    pub fn add_noise(&mut self, noise: &Vec<f32>) {
+    pub fn add_noise(&mut self, noise: &Vec<f32>, noise_weight: f32) {
         let root = &mut self.nodes[self.root - self.root];
         for i in 0..N {
-            root.action_probs[i] = 0.75 * root.action_probs[i] + 0.25 * noise[i];
+            root.action_probs[i] =
+                (1.0 - noise_weight) * root.action_probs[i] + noise_weight * noise[i];
         }
     }
 
@@ -131,8 +132,6 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
         let mut best_action = None;
         let mut best_value = -std::f32::INFINITY;
 
-        // assert!(root.children.len() > 0);
-
         for &(action, child_id) in root.children.iter() {
             let child = &self.nodes[child_id - self.root];
             let value = child.num_visits;
@@ -141,8 +140,6 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
                 best_action = Some(action);
             }
         }
-        // assert!(best_action.is_some());
-
         best_action.unwrap()
     }
 
@@ -150,7 +147,6 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
         let child_id = self.next_node_id();
         let mut node_id = self.root;
         loop {
-            // assert!(node_id < self.nodes.len());
             let node = &mut self.nodes[node_id - self.root];
             if node.terminal {
                 let v = node.value;
@@ -189,9 +185,6 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
                             node.action_probs[i] *= mask[i] / total;
                         }
 
-                        // let total2 = node.action_probs.iter().sum::<f32>();
-                        // assert!((total2 - 1.0f32).abs() < 1e-6, "{} -> {}", total, total2);
-
                         node_id = self.select_best_child(node_id);
                     }
                 }
@@ -200,7 +193,6 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
     }
 
     fn select_best_child(&mut self, node_id: usize) -> usize {
-        // assert!(node_id < self.nodes.len());
         let node = &self.nodes[node_id - self.root];
 
         let visits = node.num_visits.sqrt();
@@ -218,27 +210,21 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
                 best_value = value;
             }
         }
-        // assert!(best_child_id != self.root);
         best_child_id
     }
 
     fn backprop(&mut self, leaf_node_id: usize, mut value: f32) {
         let mut node_id = leaf_node_id;
         loop {
-            // assert!(node_id < self.nodes.len());
-
             let node = &mut self.nodes[node_id - self.root];
 
             node.num_visits += 1.0;
-
-            // note this is reversed because its actually the previous node's action that this node's reward is associated with
             node.cum_value += value;
             value *= -1.0;
 
             if node_id == self.root {
                 break;
             }
-
             node_id = node.parent;
         }
     }
@@ -248,7 +234,6 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
         for _ in 0..n {
             self.explore();
         }
-        // assert_eq!(self.nodes.len() - start_n, n);
         start.elapsed()
     }
 }
