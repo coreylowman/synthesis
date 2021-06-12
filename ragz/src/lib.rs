@@ -51,11 +51,9 @@ pub fn evaluator<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
     {
         let name = String::from("model_0.ot");
         while !models_dir.join(&name).exists() {
-            println!("Waiting for {}", name);
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
 
-        println!("Loading {}", name);
         let mut vs = VarStore::new(tch::Device::Cpu);
         let policy = P::new(&vs);
         vs.load(models_dir.join(&name))?;
@@ -83,12 +81,10 @@ pub fn evaluator<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
         // wait for model to exist;
         let name = format!("model_{}.ot", i_iter + 1);
         while !models_dir.join(&name).exists() {
-            println!("Waiting for {}", name);
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
 
         // load model
-        println!("Loading {}", name);
         let mut vs = VarStore::new(tch::Device::Cpu);
         let policy = P::new(&vs);
         vs.load(models_dir.join(&name))?;
@@ -169,16 +165,15 @@ pub fn trainer<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
             for (state, target_pi, target_v) in sampler {
                 assert_eq!(state.size()[0], train_cfg.batch_size);
 
-                let legal_mask = target_pi.greater1(&tch::Tensor::zeros_like(&target_pi));
-                let illegal_value = -1e10f32 * tch::Tensor::ones_like(&target_pi);
-
                 let (logits, v) = policy.forward(&state);
+                assert_eq!(logits.size(), target_pi.size());
+                assert_eq!(v.size(), target_v.size());
 
-                let legal_logits = logits.where1(&legal_mask, &illegal_value);
-                let log_pi = legal_logits.log_softmax(-1, Kind::Float);
+                let log_pi = logits.log_softmax(-1, Kind::Float);
+                let zeros = tch::Tensor::zeros_like(&target_pi);
+                let legal_log_pi = log_pi.where1(&target_pi.greater1(&zeros), &zeros);
 
-                // let pi_loss = -(target_pi * log_pi).sum(Kind::Float) / train_cfg.batch_size;
-                let pi_loss = -(target_pi * log_pi).mean(Kind::Float);
+                let pi_loss = -(legal_log_pi * target_pi).mean(Kind::Float);
                 let v_loss = (v - target_v).square().mean(Kind::Float);
 
                 let loss = &pi_loss + &v_loss;
