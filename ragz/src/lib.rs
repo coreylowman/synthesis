@@ -31,7 +31,6 @@ pub struct TrainConfig {
     pub num_iterations: usize,
     pub num_epochs: usize,
     pub batch_size: i64,
-    pub buffer_size: usize,
     pub seed: u64,
     pub logs: std::path::PathBuf,
 }
@@ -47,39 +46,9 @@ pub fn evaluator<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
     let first_player = E::new().player();
     let all_explores = [100, 200, 400, 800, 1600, 3200, 6400, 12800];
 
-    // load first policy
-    {
-        let name = String::from("model_0.ot");
-        while !models_dir.join(&name).exists() {
-            std::thread::sleep(std::time::Duration::from_secs(1));
-        }
-
-        let mut vs = VarStore::new(tch::Device::Cpu);
-        let policy = P::new(&vs);
-        vs.load(models_dir.join(&name))?;
-        let mut policy = OwnedPolicyWithCache {
-            policy,
-            cache: HashMap::with_capacity(100_000),
-        };
-
-        let result = eval_against_random(&rollout_cfg, &mut policy, first_player);
-        add_pgn_result(&mut pgn, &name, &String::from("Random"), result)?;
-        let result = eval_against_random(&rollout_cfg, &mut policy, first_player.next());
-        add_pgn_result(&mut pgn, &String::from("Random"), &name, result)?;
-
-        for &explores in &all_explores {
-            let result =
-                eval_against_vanilla_mcts(&rollout_cfg, &mut policy, first_player, explores);
-            add_pgn_result(&mut pgn, &name, &format!("VanillaMCTS{}", explores), result)?;
-            let result =
-                eval_against_vanilla_mcts(&rollout_cfg, &mut policy, first_player.next(), explores);
-            add_pgn_result(&mut pgn, &format!("VanillaMCTS{}", explores), &name, result)?;
-        }
-    }
-
-    for i_iter in 0..train_cfg.num_iterations {
+    for i_iter in 0..train_cfg.num_iterations + 1 {
         // wait for model to exist;
-        let name = format!("model_{}.ot", i_iter + 1);
+        let name = format!("model_{}.ot", i_iter);
         while !models_dir.join(&name).exists() {
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
@@ -132,7 +101,8 @@ pub fn trainer<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
     tch::manual_seed(train_cfg.seed as i64);
     let mut rng = StdRng::seed_from_u64(train_cfg.seed);
 
-    let mut buffer = ReplayBuffer::<E, N>::new(train_cfg.buffer_size);
+    let mut buffer = ReplayBuffer::<E, N>::new(rollout_cfg.buffer_size);
+    fill_buffer(rollout_cfg, &mut rng, &mut buffer);
 
     let vs = VarStore::new(tch::Device::Cpu);
     let mut policy = P::new(&vs);
@@ -173,7 +143,9 @@ pub fn trainer<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
                 let zeros = tch::Tensor::zeros_like(&target_pi);
                 let legal_log_pi = log_pi.where1(&target_pi.greater1(&zeros), &zeros);
 
-                let pi_loss = -(legal_log_pi * target_pi).mean(Kind::Float);
+                let pi_loss = (legal_log_pi * -target_pi)
+                    .sum1(&[-1], true, Kind::Float)
+                    .mean(Kind::Float);
                 let v_loss = (v - target_v).square().mean(Kind::Float);
 
                 let loss = &pi_loss + &v_loss;
@@ -182,6 +154,8 @@ pub fn trainer<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
                 epoch_loss[0] += f32::from(&pi_loss);
                 epoch_loss[1] += f32::from(&v_loss);
             }
+            epoch_loss[0] *= (train_cfg.batch_size as f32) / (dims[0] as f32);
+            epoch_loss[1] *= (train_cfg.batch_size as f32) / (dims[0] as f32);
             println!("{} {:?}", _i_epoch, epoch_loss);
         }
 

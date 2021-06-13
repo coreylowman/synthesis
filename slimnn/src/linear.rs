@@ -15,7 +15,7 @@ impl<const I: usize, const O: usize> Default for Linear<I, O> {
 
 impl<const I: usize, const O: usize> Linear<I, O> {
     pub fn forward(&self, x: &[f32; I]) -> [f32; O] {
-        let mut output = self.bias.clone();
+        let mut output = self.bias;
         for i_output in 0..O {
             let w = &self.weight[i_output];
             for i_input in 0..I {
@@ -36,5 +36,6 @@ mod tests {
         q.weight = [[1., 3., 5.], [2., 4., 6.]];
         q.bias = [-1., 1.];
         assert_eq!(q.forward(&[3., 2., 1.]), [13., 21.]);
+        assert_eq!(q.forward(&[1., 3., 2.]), [19., 27.]);
     }
 }

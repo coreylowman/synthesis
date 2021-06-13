@@ -138,7 +138,7 @@ impl<E: Env<N>, const N: usize> ReplayBuffer<E, N> {
         self.game_ids.push(self.game_id);
         self.steps += 1;
         self.states.push(state.clone());
-        self.pis.push(pi.clone());
+        self.pis.push(*pi);
         self.vs.push(v);
     }
 
@@ -146,9 +146,9 @@ impl<E: Env<N>, const N: usize> ReplayBuffer<E, N> {
         if self.vs.len() + n > self.capacity {
             let num_to_drop = self.vs.len() + n - self.capacity;
             drop(self.game_ids.drain(0..num_to_drop));
-            drop(self.states.drain(0..(num_to_drop)));
-            drop(self.pis.drain(0..(num_to_drop)));
-            drop(self.vs.drain(0..(num_to_drop)));
+            drop(self.states.drain(0..num_to_drop));
+            drop(self.pis.drain(0..num_to_drop));
+            drop(self.vs.drain(0..num_to_drop));
         }
         assert!(self.vs.len() + n <= self.capacity);
     }

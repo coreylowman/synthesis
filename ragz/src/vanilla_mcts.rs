@@ -1,5 +1,5 @@
 use crate::env::Env;
-use rand::{rngs::StdRng, Rng};
+use rand::Rng;
 use std::time::{Duration, Instant};
 
 pub struct Node<E: Env<N>, const N: usize> {
@@ -29,14 +29,14 @@ impl<E: Env<N>, const N: usize> Node<E, N> {
     }
 }
 
-pub struct VanillaMCTS<'a, E: Env<N>, const N: usize> {
+pub struct VanillaMCTS<'a, E: Env<N>, R: Rng, const N: usize> {
     pub root: usize,
     pub nodes: Vec<Node<E, N>>,
-    pub rng: &'a mut StdRng,
+    pub rng: &'a mut R,
 }
 
-impl<'a, E: Env<N>, const N: usize> VanillaMCTS<'a, E, N> {
-    pub fn with_capacity(capacity: usize, env: E, rng: &'a mut StdRng) -> Self {
+impl<'a, E: Env<N>, R: Rng, const N: usize> VanillaMCTS<'a, E, R, N> {
+    pub fn with_capacity(capacity: usize, env: E, rng: &'a mut R) -> Self {
         let mut mcts = Self {
             root: 0,
             nodes: Vec::with_capacity(capacity),
@@ -48,6 +48,14 @@ impl<'a, E: Env<N>, const N: usize> VanillaMCTS<'a, E, N> {
         mcts.nodes.push(root);
 
         mcts
+    }
+
+    pub fn root_node(&self) -> &Node<E, N> {
+        self.get_node(self.root)
+    }
+
+    pub fn get_node(&self, node_id: usize) -> &Node<E, N> {
+        &self.nodes[node_id - self.root]
     }
 
     fn next_node_id(&self) -> usize {

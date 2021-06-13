@@ -61,13 +61,6 @@ impl Activation for Softmax {
         }
         y
     }
-
-    fn apply_3d<const W: usize, const H: usize, const I: usize>(
-        &self,
-        _x: &[[[f32; I]; W]; H],
-    ) -> [[[f32; I]; W]; H] {
-        panic!("Can't call Softmax on 3d values")
-    }
 }
 
 #[cfg(test)]

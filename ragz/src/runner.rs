@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct RolloutConfig {
-    pub capacity: usize,
+    pub buffer_size: usize,
     pub num_explores: usize,
     pub sample_action_until: usize,
     pub steps: usize,
@@ -50,15 +50,10 @@ fn run_game<E: Env<N>, P: Policy<E, N>, R: Rng, const N: usize>(
         let root_node = mcts.root_node();
 
         // save timestep
-        let mut total = 0.0;
         search_policy.fill(0.0);
         for &(action, child_id) in root_node.children.iter() {
             let child = mcts.get_node(child_id);
-            search_policy[action.into()] = child.num_visits;
-            total += child.num_visits;
-        }
-        for i in 0..N {
-            search_policy[i] /= total;
+            search_policy[action.into()] = child.num_visits / cfg.num_explores as f32;
         }
 
         // root_node.cum_value / root_node.num_visits,
@@ -76,7 +71,45 @@ fn run_game<E: Env<N>, P: Policy<E, N>, R: Rng, const N: usize>(
         num_turns += 1;
     }
 
-    assert!(num_turns > cfg.sample_action_until);
+    let mut r = game.reward(start_player);
+    for i in start_i..buffer.vs.len() {
+        buffer.vs[i] = r;
+        r *= -1.0;
+    }
+}
+
+fn run_vanilla_mcts_game<E: Env<N>, R: Rng, const N: usize>(
+    cfg: &RolloutConfig,
+    rng: &mut R,
+    buffer: &mut ReplayBuffer<E, N>,
+) {
+    let mut game = E::new();
+    let mut is_over = false;
+    let mut search_policy = [0.0; N];
+    let start_i = buffer.vs.len();
+    let start_player = game.player();
+
+    while !is_over {
+        let mut mcts =
+            VanillaMCTS::<E, R, N>::with_capacity(cfg.num_explores + 1, game.clone(), rng);
+
+        mcts.explore_n(cfg.num_explores);
+
+        let root_node = mcts.root_node();
+        search_policy.fill(0.0);
+        for &(action, child_id) in root_node.children.iter() {
+            let child = mcts.get_node(child_id);
+            search_policy[action.into()] = child.num_visits / cfg.num_explores as f32;
+        }
+
+        buffer.add(&game.state(), &search_policy, 0.0);
+
+        let dist = WeightedIndex::new(&search_policy).unwrap();
+        let choice = dist.sample(rng);
+        let action = E::Action::from(choice);
+
+        is_over = game.step(&action);
+    }
 
     let mut r = game.reward(start_player);
     for i in start_i..buffer.vs.len() {
@@ -136,8 +169,11 @@ pub fn eval_against_vanilla_mcts<E: Env<N>, P: Policy<E, N>, const N: usize>(
             mcts.explore_n(cfg.num_explores);
             mcts.best_action()
         } else {
-            let mut mcts =
-                VanillaMCTS::<E, N>::with_capacity(opponent_explores + 1, game.clone(), &mut rng);
+            let mut mcts = VanillaMCTS::<E, StdRng, N>::with_capacity(
+                opponent_explores + 1,
+                game.clone(),
+                &mut rng,
+            );
             mcts.explore_n(opponent_explores);
             mcts.best_action()
         };
@@ -172,6 +208,27 @@ pub fn gather_experience<E: Env<N>, P: Policy<E, N>, R: Rng, const N: usize>(
     while buffer.vs.len() < target {
         buffer.new_game();
         run_game(cfg, &mut cached_policy, rng, buffer);
+        bar.inc((buffer.curr_steps() - last) as u64);
+        last = buffer.curr_steps();
+    }
+    bar.finish();
+}
+
+pub fn fill_buffer<E: Env<N>, R: Rng, const N: usize>(
+    cfg: &RolloutConfig,
+    rng: &mut R,
+    buffer: &mut ReplayBuffer<E, N>,
+) {
+    let target = cfg.buffer_size - cfg.steps;
+    let bar = ProgressBar::new(target as u64);
+    bar.set_style(
+        ProgressStyle::default_bar()
+            .template("[{bar:40}] {percent}% {pos}/{len} {per_sec} {elapsed_precise}")
+            .progress_chars("|| "),
+    );
+    let mut last = buffer.curr_steps();
+    while buffer.vs.len() < target {
+        run_vanilla_mcts_game(cfg, rng, buffer);
         bar.inc((buffer.curr_steps() - last) as u64);
         last = buffer.curr_steps();
     }

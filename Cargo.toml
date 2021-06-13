@@ -7,4 +7,3 @@ members = [
     "riches",
     "invest",
 ]
-default-run = "riches"
