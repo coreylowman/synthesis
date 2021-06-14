@@ -1,4 +1,5 @@
 use base65536;
+use std::collections::HashMap;
 use std::env;
 use std::io::Write;
 use std::path::Path;
@@ -15,20 +16,52 @@ fn serialize_tensor(t: &tch::Tensor) -> String {
 }
 
 fn serialize_tensors<P: AsRef<Path>>(
-    vs: &Vec<(String, tch::Tensor)>,
+    variables: &HashMap<String, tch::Tensor>,
     path: P,
 ) -> Result<(), std::io::Error> {
+    let mut names: Vec<String> = variables
+        .iter()
+        .map(|(k, _)| String::from(k.split(".").next().unwrap()))
+        .collect();
+    names.sort();
+    names.dedup();
+
     let mut f = std::fs::File::create(path)?;
+    let mut i = 0;
+    for name in names.iter() {
+        let weight_key = format!("{}.weight", name);
+        let bias_key = format!("{}.bias", name);
+        f.write_fmt(format_args!(
+            "// load_2d(&mut policy.{}, String::from(PARAMETERS[{}]));\n",
+            weight_key, i,
+        ))?;
+        i += 1;
+        f.write_fmt(format_args!(
+            "// load_1d(&mut policy.{}, String::from(PARAMETERS[{}]));\n",
+            bias_key, i,
+        ))?;
+        i += 1;
+    }
+
     f.write_fmt(format_args!(
         "const PARAMETERS: [&'static str; {}] = [\n",
-        vs.len()
+        variables.len()
     ))?;
-    for (i, (key, value)) in vs.iter().enumerate() {
-        let str_tensor = serialize_tensor(&value);
-        println!("{} - {}", key, str_tensor.len());
-        f.write_fmt(format_args!("// {} - {}\n\"{}\",\n", key, i, str_tensor,))?;
+    let mut i = 0;
+    for name in names.iter() {
+        let weight_key = format!("{}.weight", name);
+        let bias_key = format!("{}.bias", name);
+        let str_weight = serialize_tensor(&variables.get(&weight_key).unwrap());
+        let str_bias = serialize_tensor(&variables.get(&bias_key).unwrap());
+        println!("{} - {} {}", name, str_weight.len(), str_bias.len());
+        f.write_fmt(format_args!(
+            "// {} - {}\n\"{}\",\n\"{}\",\n",
+            name, i, str_weight, str_bias,
+        ))?;
+        i += 2;
     }
     f.write(b"];\n")?;
+
     Ok(())
 }
 
@@ -40,6 +73,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dst_params_path = &args[2];
 
     let ts = tch::Tensor::load_multi(src_varstore_path)?;
-    serialize_tensors(&ts, dst_params_path)?;
+    let variables: HashMap<String, tch::Tensor> = ts.into_iter().collect();
+    serialize_tensors(&variables, dst_params_path)?;
     Ok(())
 }

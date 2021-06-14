@@ -19,10 +19,10 @@ fn run<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
     };
 
     let rollout_cfg = RolloutConfig {
-        buffer_size: 128_000,
+        buffer_size: 256_000,
         num_explores: 800,
         sample_action_until: 25,
-        steps: 25_600,
+        steps: 51_200,
         alpha: 1.0 / (N as f32),
         noisy_explore: true,
         noise_weight: 0.25,
@@ -50,7 +50,7 @@ fn main() {
         seed: 0,
         logs: std::path::Path::new("./_logs")
             .join("Connect4")
-            .join("06-12-2021T15-46-51Z"),
+            .join("06-13-2021T12-40-15Z"),
     };
 
     let eval_rollout_cfg = RolloutConfig {

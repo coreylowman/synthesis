@@ -20,26 +20,26 @@ impl NNPolicy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
         assert!(state_dims[0] == 1);
         Self {
             p_1: nn::linear(
-                root / "v_1",
+                root / "p_1",
                 state_dims.iter().fold(1, |a, v| a * v),
-                256,
+                64,
                 Default::default(),
             ),
-            p_2: nn::linear(root / "p_2", 256, 256, Default::default()),
+            p_2: nn::linear(root / "p_2", 64, 32, Default::default()),
             p_3: nn::linear(
                 root / "p_3",
-                256,
+                32,
                 Connect4::MAX_NUM_ACTIONS as i64,
                 Default::default(),
             ),
             v_1: nn::linear(
                 root / "v_1",
                 state_dims.iter().fold(1, |a, v| a * v),
-                256,
+                64,
                 Default::default(),
             ),
-            v_2: nn::linear(root / "v_2", 256, 256, Default::default()),
-            v_3: nn::linear(root / "v_3", 256, 1, Default::default()),
+            v_2: nn::linear(root / "v_2", 64, 32, Default::default()),
+            v_3: nn::linear(root / "v_3", 32, 1, Default::default()),
         }
     }
 
@@ -79,31 +79,29 @@ impl Policy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
 
 #[derive(Default)]
 pub struct SlimC4Net {
-    fc_1: slimnn::Linear<{ 2 * 7 * 9 }, 32>,
-    fc_2: slimnn::Linear<32, 32>,
-    p_1: slimnn::Linear<32, 32>,
-    p_2: slimnn::Linear<32, { Connect4::MAX_NUM_ACTIONS }>,
-    v_1: slimnn::Linear<32, 32>,
-    v_2: slimnn::Linear<32, 1>,
+    p_1: slimnn::Linear<{ 2 * 7 * 9 }, 64>,
+    p_2: slimnn::Linear<64, 32>,
+    p_3: slimnn::Linear<32, { Connect4::MAX_NUM_ACTIONS }>,
+    v_1: slimnn::Linear<{ 2 * 7 * 9 }, 64>,
+    v_2: slimnn::Linear<64, 32>,
+    v_3: slimnn::Linear<32, 1>,
 }
 
 impl SlimC4Net {
     fn forward(&self, x: &[f32; 2 * 7 * 9]) -> ([f32; Connect4::MAX_NUM_ACTIONS], f32) {
-        let x = self.fc_1.forward(x);
-        let x = slimnn::ReLU.apply_1d(&x);
-        let x = self.fc_2.forward(&x);
-        let x = slimnn::ReLU.apply_1d(&x);
-
         let px = self.p_1.forward(&x);
         let px = slimnn::ReLU.apply_1d(&px);
-        let policy = self.p_2.forward(&px);
+        let px = self.p_2.forward(&px);
+        let px = slimnn::ReLU.apply_1d(&px);
+        let logits = self.p_3.forward(&px);
 
         let vx = self.v_1.forward(&x);
         let vx = slimnn::ReLU.apply_1d(&vx);
         let vx = self.v_2.forward(&vx);
-        let value = vx[0].tanh();
+        let vx = slimnn::ReLU.apply_1d(&vx);
+        let value = self.v_3.forward(&vx)[0].tanh();
 
-        (policy, value)
+        (logits, value)
     }
 }
 

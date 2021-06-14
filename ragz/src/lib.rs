@@ -53,6 +53,9 @@ pub fn evaluator<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
 
+        // wait an extra second to be sure data is there
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
         // load model
         let mut vs = VarStore::new(tch::Device::Cpu);
         let policy = P::new(&vs);
@@ -68,12 +71,24 @@ pub fn evaluator<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
         add_pgn_result(&mut pgn, &String::from("Random"), &name, result)?;
 
         for &explores in &all_explores {
-            let result =
-                eval_against_vanilla_mcts(&rollout_cfg, &mut policy, first_player, explores);
-            add_pgn_result(&mut pgn, &name, &format!("VanillaMCTS{}", explores), result)?;
-            let result =
-                eval_against_vanilla_mcts(&rollout_cfg, &mut policy, first_player.next(), explores);
-            add_pgn_result(&mut pgn, &format!("VanillaMCTS{}", explores), &name, result)?;
+            for seed in 0..10 {
+                let result = eval_against_vanilla_mcts(
+                    &rollout_cfg,
+                    &mut policy,
+                    first_player,
+                    explores,
+                    seed,
+                );
+                add_pgn_result(&mut pgn, &name, &format!("VanillaMCTS{}", explores), result)?;
+                let result = eval_against_vanilla_mcts(
+                    &rollout_cfg,
+                    &mut policy,
+                    first_player.next(),
+                    explores,
+                    seed,
+                );
+                add_pgn_result(&mut pgn, &format!("VanillaMCTS{}", explores), &name, result)?;
+            }
         }
 
         // update results
@@ -101,9 +116,6 @@ pub fn trainer<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
     tch::manual_seed(train_cfg.seed as i64);
     let mut rng = StdRng::seed_from_u64(train_cfg.seed);
 
-    let mut buffer = ReplayBuffer::<E, N>::new(rollout_cfg.buffer_size);
-    fill_buffer(rollout_cfg, &mut rng, &mut buffer);
-
     let vs = VarStore::new(tch::Device::Cpu);
     let mut policy = P::new(&vs);
     let mut opt = Adam::default().build(&vs, train_cfg.lr)?;
@@ -112,6 +124,9 @@ pub fn trainer<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
     let mut dims = E::get_state_dims();
 
     vs.save(models_dir.join(String::from("model_0.ot")))?;
+
+    let mut buffer = ReplayBuffer::<E, N>::new(rollout_cfg.buffer_size);
+    fill_buffer(rollout_cfg, &mut rng, &mut buffer);
 
     for i_iter in 0..train_cfg.num_iterations {
         // gather data

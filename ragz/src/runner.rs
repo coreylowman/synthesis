@@ -154,10 +154,11 @@ pub fn eval_against_vanilla_mcts<E: Env<N>, P: Policy<E, N>, const N: usize>(
     policy: &mut P,
     player: E::PlayerId,
     opponent_explores: usize,
+    seed: u64,
 ) -> f32 {
     let mut game = E::new();
     let first_player = game.player();
-    let mut rng = StdRng::seed_from_u64(0);
+    let mut rng = StdRng::seed_from_u64(seed);
     loop {
         let action = if game.player() == player {
             let mut mcts = MCTS::<E, P, N>::with_capacity(
