@@ -27,3 +27,13 @@ pub fn load_2d<const I: usize, const O: usize>(data: &mut [[f32; I]; O], params:
     assert_eq!(floats.len(), I * O);
     unsafe { std::ptr::copy(floats.as_ptr(), data[0].as_mut_ptr(), floats.len()) };
 }
+
+pub fn load_4d<const I: usize, const J: usize, const K: usize, const L: usize>(
+    data: &mut [[[[f32; I]; J]; K]; L],
+    params: String,
+) {
+    let bytes = base65536::decode(params);
+    let floats = bytes_to_floats(bytes);
+    assert_eq!(floats.len(), I * J * K * L);
+    unsafe { std::ptr::copy(floats.as_ptr(), data[0][0][0].as_mut_ptr(), floats.len()) };
+}

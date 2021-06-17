@@ -2,7 +2,8 @@ pub struct Conv2d<
     const NUM_CHAN_IN: usize,
     const NUM_CHAN_OUT: usize,
     const KERNEL_SIZE: usize,
-    const PADDING: usize,
+    const ROW_PADDING: usize,
+    const COL_PADDING: usize,
     const STRIDE: usize,
 > {
     pub weight: [[[[f32; KERNEL_SIZE]; KERNEL_SIZE]; NUM_CHAN_IN]; NUM_CHAN_OUT],
@@ -13,9 +14,10 @@ impl<
         const NUM_CHAN_IN: usize,
         const NUM_CHAN_OUT: usize,
         const KERNEL_SIZE: usize,
-        const PADDING: usize,
+        const ROW_PADDING: usize,
+        const COL_PADDING: usize,
         const STRIDE: usize,
-    > Default for Conv2d<NUM_CHAN_IN, NUM_CHAN_OUT, KERNEL_SIZE, PADDING, STRIDE>
+    > Default for Conv2d<NUM_CHAN_IN, NUM_CHAN_OUT, KERNEL_SIZE, ROW_PADDING, COL_PADDING, STRIDE>
 {
     fn default() -> Self {
         Self {
@@ -29,36 +31,44 @@ impl<
         const NUM_CHAN_IN: usize,
         const NUM_CHAN_OUT: usize,
         const KERNEL_SIZE: usize,
-        const PADDING: usize,
+        const ROW_PADDING: usize,
+        const COL_PADDING: usize,
         const STRIDE: usize,
-    > Conv2d<NUM_CHAN_IN, NUM_CHAN_OUT, KERNEL_SIZE, PADDING, STRIDE>
+    > Conv2d<NUM_CHAN_IN, NUM_CHAN_OUT, KERNEL_SIZE, ROW_PADDING, COL_PADDING, STRIDE>
 {
     pub fn forward<const W_IN: usize, const H_IN: usize, const W_OUT: usize, const H_OUT: usize>(
         &self,
         x: &[[[f32; W_IN]; H_IN]; NUM_CHAN_IN],
     ) -> [[[f32; W_OUT]; H_OUT]; NUM_CHAN_OUT] {
         // TODO convert these to compile time calculations when that feature gets added
-        assert_eq!(W_OUT, ((W_IN + 2 * PADDING - KERNEL_SIZE + 1) / STRIDE));
-        assert_eq!(H_OUT, ((H_IN + 2 * PADDING - KERNEL_SIZE + 1) / STRIDE));
+        assert_eq!(W_OUT, ((W_IN + 2 * COL_PADDING - KERNEL_SIZE) / STRIDE) + 1);
+        assert_eq!(H_OUT, ((H_IN + 2 * ROW_PADDING - KERNEL_SIZE) / STRIDE) + 1);
 
         let mut y = [[[0.0; W_OUT]; H_OUT]; NUM_CHAN_OUT];
         for i_cout in 0..NUM_CHAN_OUT {
+            let ycout = &mut y[i_cout];
+            let wcout = &self.weight[i_cout];
             for i_out_row in 0..H_OUT {
+                let yrow = &mut ycout[i_out_row];
                 for i_out_col in 0..W_OUT {
-                    y[i_cout][i_out_row][i_out_col] = self.bias[i_cout];
+                    let ycol = &mut yrow[i_out_col];
+                    *ycol = self.bias[i_cout];
                     for i_cin in 0..NUM_CHAN_IN {
+                        let wcin = &wcout[i_cin];
+                        let xcin = &x[i_cin];
                         for i_k1 in 0..KERNEL_SIZE {
+                            let wk1 = &wcin[i_k1];
+                            let i_in_row = i_out_row * STRIDE + i_k1;
                             for i_k2 in 0..KERNEL_SIZE {
-                                let i_in_row = i_out_row * STRIDE + i_k1;
                                 let i_in_col = i_out_col * STRIDE + i_k2;
-                                if PADDING <= i_in_row
-                                    && i_in_row < H_IN + PADDING
-                                    && PADDING <= i_in_col
-                                    && i_in_col < W_IN + PADDING
+                                if ROW_PADDING <= i_in_row
+                                    && i_in_row < H_IN + ROW_PADDING
+                                    && COL_PADDING <= i_in_col
+                                    && i_in_col < W_IN + COL_PADDING
                                 {
-                                    let w = self.weight[i_cout][i_cin][i_k1][i_k2];
-                                    let v = x[i_cin][i_in_row - PADDING][i_in_col - PADDING];
-                                    y[i_cout][i_out_row][i_out_col] += w * v;
+                                    let w = wk1[i_k2];
+                                    let v = xcin[i_in_row - ROW_PADDING][i_in_col - COL_PADDING];
+                                    *ycol += w * v;
                                 }
                             }
                         }
@@ -76,7 +86,7 @@ mod tests {
 
     #[test]
     fn test_channels() {
-        let mut conv: Conv2d<2, 3, 3, 0, 1> = Default::default();
+        let mut conv: Conv2d<2, 3, 3, 0, 0, 1> = Default::default();
         conv.weight = [
             [
                 [
@@ -141,7 +151,7 @@ mod tests {
 
     #[test]
     fn test_pad0_stride1() {
-        let mut conv: Conv2d<1, 2, 2, 0, 1> = Default::default();
+        let mut conv: Conv2d<1, 2, 2, 0, 0, 1> = Default::default();
         conv.weight = [
             [[[-0.32677823, -0.05076015], [-0.05067509, -0.4386055]]],
             [[[0.03580105, -0.22968405], [-0.0093717, -0.02110344]]],
@@ -168,7 +178,7 @@ mod tests {
 
     #[test]
     fn test_pad1_stride1() {
-        let mut conv: Conv2d<1, 2, 3, 1, 1> = Default::default();
+        let mut conv: Conv2d<1, 2, 3, 1, 1, 1> = Default::default();
         conv.weight = [
             [[
                 [0.1022217, -0.2990429, -0.00128791],
@@ -216,7 +226,7 @@ mod tests {
 
     #[test]
     fn test_pad1_stride1_v2() {
-        let mut conv: Conv2d<1, 2, 2, 1, 1> = Default::default();
+        let mut conv: Conv2d<1, 2, 2, 1, 1, 1> = Default::default();
         conv.weight = [
             [[[-0.05767131, 0.29223222], [0.12310421, 0.4551205]]],
             [[[-0.42312527, -0.10522532], [-0.44393647, -0.34403402]]],
@@ -258,7 +268,7 @@ mod tests {
 
     #[test]
     fn test_pad1_stride3() {
-        let mut conv: Conv2d<2, 4, 3, 1, 3> = Default::default();
+        let mut conv: Conv2d<2, 4, 3, 1, 1, 3> = Default::default();
         conv.weight = [
             [
                 [
@@ -414,6 +424,164 @@ mod tests {
                 [-0.0173984, 0.10020237, -0.02460488],
             ],
         ];
+        for i_chan in 0..4 {
+            for i_row in 0..3 {
+                for i_col in 0..3 {
+                    assert!(
+                        (y[i_chan][i_row][i_col] - t[i_chan][i_row][i_col]) < 1e-6,
+                        "y={:?}\nt={:?}\n",
+                        y,
+                        t
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_diff_paddings() {
+        let mut conv: Conv2d<2, 4, 3, 1, 0, 3> = Default::default();
+
+        conv.weight = [
+            [
+                [
+                    [-0.16951475, 0.18148716, 0.11452983],
+                    [-0.05653553, -0.12347288, 0.1437112],
+                    [0.11910407, 0.09197839, -0.19396508],
+                ],
+                [
+                    [0.2284107, 0.0551682, -0.21032758],
+                    [0.16945575, 0.16806488, 0.11360888],
+                    [0.17211585, -0.23254138, -0.14311942],
+                ],
+            ],
+            [
+                [
+                    [0.15108018, 0.2310238, -0.07898572],
+                    [0.09268294, 0.16065855, -0.02468468],
+                    [0.04045774, 0.11338453, -0.13995044],
+                ],
+                [
+                    [-0.23541123, 0.09708233, -0.1154344],
+                    [-0.07918043, 0.14908992, -0.23269427],
+                    [0.1471413, -0.18606442, -0.07318471],
+                ],
+            ],
+            [
+                [
+                    [-0.05816181, -0.07883959, -0.1241257],
+                    [-0.17616543, -0.19186923, 0.0532635],
+                    [0.08541082, 0.0948873, 0.1106682],
+                ],
+                [
+                    [0.1407726, -0.18328246, -0.20389993],
+                    [-0.18750295, -0.00620356, 0.1526462],
+                    [0.01116495, -0.19061024, 0.17295755],
+                ],
+            ],
+            [
+                [
+                    [-0.15338722, 0.11304025, -0.13875616],
+                    [0.170949, 0.05909871, -0.09674671],
+                    [-0.00352511, 0.10647057, -0.17724186],
+                ],
+                [
+                    [-0.18874522, -0.16570199, -0.00518005],
+                    [0.05784269, -0.0508645, 0.08142553],
+                    [-0.12230667, 0.14570008, 0.05119579],
+                ],
+            ],
+        ];
+        conv.bias = [0.04838754, 0.07195146, -0.03947061, 0.17069755];
+
+        let x = [
+            [
+                [
+                    0.8835113, 0.13882023, 0.7315728, 0.6014649, 0.29594523, 0.46894914, 0.8524046,
+                    0.45359534, 0.43056685,
+                ],
+                [
+                    0.1012792, 0.05108845, 0.25242734, 0.8690395, 0.32797933, 0.05993927,
+                    0.7875964, 0.00939852, 0.23371905,
+                ],
+                [
+                    0.7273682, 0.39719957, 0.9026962, 0.18514287, 0.9099473, 0.6830876, 0.8096039,
+                    0.5167066, 0.83929837,
+                ],
+                [
+                    0.6798897, 0.6469037, 0.37039953, 0.880702, 0.49907035, 0.05726093, 0.7798417,
+                    0.9619096, 0.5043428,
+                ],
+                [
+                    0.2669297, 0.8015939, 0.95740455, 0.6020198, 0.87445277, 0.7183642, 0.54205835,
+                    0.68437976, 0.82951576,
+                ],
+                [
+                    0.5435678, 0.4369346, 0.4174738, 0.8460932, 0.13418722, 0.55912274, 0.1456281,
+                    0.800143, 0.07224685,
+                ],
+                [
+                    0.95401746, 0.2754792, 0.03196198, 0.5022102, 0.1791898, 0.08201677, 0.706302,
+                    0.57362723, 0.3891986,
+                ],
+            ],
+            [
+                [
+                    0.25238568, 0.6502806, 0.5196041, 0.3642316, 0.6576511, 0.12723362, 0.7020561,
+                    0.18168187, 0.5960324,
+                ],
+                [
+                    0.23093349, 0.14747256, 0.6867326, 0.85302174, 0.39524788, 0.4955296,
+                    0.8853273, 0.60563225, 0.9854223,
+                ],
+                [
+                    0.08876747, 0.84838796, 0.7440208, 0.6717199, 0.9986871, 0.16444528, 0.8884909,
+                    0.11773419, 0.16389328,
+                ],
+                [
+                    0.12747067, 0.62013346, 0.31473154, 0.5395161, 0.07182807, 0.17038721,
+                    0.9332434, 0.3214336, 0.91524035,
+                ],
+                [
+                    0.82844126, 0.5781982, 0.13706946, 0.73159313, 0.50984377, 0.62877065,
+                    0.24265271, 0.08741719, 0.5145434,
+                ],
+                [
+                    0.50140876, 0.99232125, 0.6318608, 0.7825543, 0.9962608, 0.27447134,
+                    0.82021457, 0.7088084, 0.789743,
+                ],
+                [
+                    0.22269273, 0.14444828, 0.810514, 0.17407775, 0.48010093, 0.48212987,
+                    0.5515393, 0.01245189, 0.29415256,
+                ],
+            ],
+        ];
+
+        let y = conv.forward::<9, 7, 3, 3>(&x);
+
+        let t = [
+            [
+                [0.17249039, 0.33797365, 0.14313158],
+                [0.01598295, 0.38415283, 0.4161861],
+                [0.19046798, 0.29555833, 0.31168252],
+            ],
+            [
+                [0.04498426, 0.28293645, -0.00831042],
+                [0.31679663, 0.25450188, -0.02866032],
+                [0.07459396, 0.08634683, 0.09541086],
+            ],
+            [
+                [-0.02014766, -0.09831435, -0.13660741],
+                [-0.59615356, -0.41860208, -0.21566784],
+                [-0.5356276, -0.37756905, -0.5678168],
+            ],
+            [
+                [0.27173287, 0.24347454, 0.36867434],
+                [-0.15768422, 0.05384711, -0.01273608],
+                [0.06425115, -0.22228895, 0.12463954],
+            ],
+        ];
+
         for i_chan in 0..4 {
             for i_row in 0..3 {
                 for i_col in 0..3 {
