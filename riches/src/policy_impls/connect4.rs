@@ -1,15 +1,18 @@
 use crate::envs::Connect4;
 use ragz::prelude::*;
-use slimnn::{self, Activation};
-use tch::{self, nn, Tensor};
+use slimnn::{Activation, Conv2d, Linear, ReLU, Softmax};
+use tch::{
+    self,
+    nn::{self, ConvConfigND},
+    Tensor,
+};
 
 pub struct Connect4Net {
+    c_1: nn::Conv2D,
     p_1: nn::Linear,
     p_2: nn::Linear,
-    p_3: nn::Linear,
     v_1: nn::Linear,
     v_2: nn::Linear,
-    v_3: nn::Linear,
 }
 
 impl NNPolicy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
@@ -19,44 +22,39 @@ impl NNPolicy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
         assert!(state_dims.len() == 4);
         assert!(state_dims[0] == 1);
         Self {
-            p_1: nn::linear(
-                root / "p_1",
-                state_dims.iter().fold(1, |a, v| a * v),
-                64,
-                Default::default(),
+            c_1: nn::conv(
+                root / "c_1",
+                2,
+                5,
+                [3, 3],
+                ConvConfigND {
+                    stride: [3, 3],
+                    padding: [1, 0],
+                    ..Default::default()
+                },
             ),
-            p_2: nn::linear(root / "p_2", 64, 32, Default::default()),
-            p_3: nn::linear(
-                root / "p_3",
+            p_1: nn::linear(root / "p_1", 5 * 3 * 3, 32, Default::default()),
+            p_2: nn::linear(
+                root / "p_2",
                 32,
                 Connect4::MAX_NUM_ACTIONS as i64,
                 Default::default(),
             ),
-            v_1: nn::linear(
-                root / "v_1",
-                state_dims.iter().fold(1, |a, v| a * v),
-                64,
-                Default::default(),
-            ),
-            v_2: nn::linear(root / "v_2", 64, 32, Default::default()),
-            v_3: nn::linear(root / "v_3", 32, 1, Default::default()),
+            v_1: nn::linear(root / "v_1", 5 * 3 * 3, 32, Default::default()),
+            v_2: nn::linear(root / "v_2", 32, 1, Default::default()),
         }
     }
 
     fn forward(&self, xs: &Tensor) -> (Tensor, Tensor) {
-        let xs = xs.flat_view();
+        let xs = xs
+            .apply(&self.c_1)
+            .relu()
+            .apply(&self.c_2)
+            .relu()
+            .flat_view();
         (
-            xs.apply(&self.p_1)
-                .relu()
-                .apply(&self.p_2)
-                .relu()
-                .apply(&self.p_3),
-            xs.apply(&self.v_1)
-                .relu()
-                .apply(&self.v_2)
-                .relu()
-                .apply(&self.v_3)
-                .tanh(),
+            xs.apply(&self.p_1),
+            xs.apply(&self.v_1).relu().apply(&self.v_2).tanh(),
         )
     }
 }
@@ -79,27 +77,27 @@ impl Policy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
 
 #[derive(Default)]
 pub struct SlimC4Net {
-    p_1: slimnn::Linear<{ 2 * 7 * 9 }, 64>,
-    p_2: slimnn::Linear<64, 32>,
-    p_3: slimnn::Linear<32, { Connect4::MAX_NUM_ACTIONS }>,
-    v_1: slimnn::Linear<{ 2 * 7 * 9 }, 64>,
-    v_2: slimnn::Linear<64, 32>,
-    v_3: slimnn::Linear<32, 1>,
+    c_1: Conv2d<2, 5, 3, 1, 0, 3>,
+    p_1: Linear<{ 5 * 3 * 3 }, 32>,
+    p_2: Linear<32, { Connect4::MAX_NUM_ACTIONS }>,
+    v_1: Linear<{ 5 * 3 * 3 }, 32>,
+    v_2: Linear<32, 1>,
 }
 
 impl SlimC4Net {
-    fn forward(&self, x: &[f32; 2 * 7 * 9]) -> ([f32; Connect4::MAX_NUM_ACTIONS], f32) {
+    fn forward(&self, x: &[[[f32; 9]; 7]; 2]) -> ([f32; Connect4::MAX_NUM_ACTIONS], f32) {
+        let x = self.c_1.forward::<9, 7, 3, 3>(x);
+        let x = ReLU.apply_3d(&x);
+
+        let x: [f32; 5 * 3 * 3] = unsafe { std::mem::transmute(x) };
+
         let px = self.p_1.forward(&x);
-        let px = slimnn::ReLU.apply_1d(&px);
-        let px = self.p_2.forward(&px);
-        let px = slimnn::ReLU.apply_1d(&px);
-        let logits = self.p_3.forward(&px);
+        let px = ReLU.apply_1d(&px);
+        let logits = self.p_2.forward(&px);
 
         let vx = self.v_1.forward(&x);
-        let vx = slimnn::ReLU.apply_1d(&vx);
-        let vx = self.v_2.forward(&vx);
-        let vx = slimnn::ReLU.apply_1d(&vx);
-        let value = self.v_3.forward(&vx)[0].tanh();
+        let vx = ReLU.apply_1d(&vx);
+        let value = self.v_2.forward(&vx)[0].tanh();
 
         (logits, value)
     }
@@ -110,13 +108,16 @@ impl Policy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for SlimC4Net {
         &mut self,
         xs: &<Connect4 as Env<{ Connect4::MAX_NUM_ACTIONS }>>::State,
     ) -> ([f32; Connect4::MAX_NUM_ACTIONS], f32) {
-        let bool_x: [bool; 2 * 7 * 9] = unsafe { std::mem::transmute(*xs) };
-        let mut x = [0.0; 2 * 7 * 9];
-        for i in 0..(2 * 7 * 9) {
-            x[i] = if bool_x[i] { 1.0 } else { 0.0 };
+        let mut x = [[[0.0; 9]; 7]; 2];
+        for i in 0..2 {
+            for j in 0..7 {
+                for k in 0..9 {
+                    x[i][j][k] = if xs[i][j][k] { 1.0 } else { 0.0 };
+                }
+            }
         }
         let (logits, value) = self.forward(&x);
-        let policy = slimnn::Softmax.apply_1d(&logits);
+        let policy = Softmax.apply_1d(&logits);
         (policy, value)
     }
 }

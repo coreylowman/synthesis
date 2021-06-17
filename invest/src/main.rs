@@ -32,12 +32,12 @@ fn serialize_tensors<P: AsRef<Path>>(
         let weight_key = format!("{}.weight", name);
         let bias_key = format!("{}.bias", name);
         f.write_fmt(format_args!(
-            "// load_2d(&mut policy.{}, String::from(PARAMETERS[{}]));\n",
+            "load_Nd(&mut policy.{}, String::from(PARAMETERS[{}]));\n",
             weight_key, i,
         ))?;
         i += 1;
         f.write_fmt(format_args!(
-            "// load_1d(&mut policy.{}, String::from(PARAMETERS[{}]));\n",
+            "load_1d(&mut policy.{}, String::from(PARAMETERS[{}]));\n",
             bias_key, i,
         ))?;
         i += 1;

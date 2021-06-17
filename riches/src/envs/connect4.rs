@@ -132,9 +132,7 @@ impl Iterator for FreeColumns {
 
 impl Connect4 {
     fn winner(&self) -> Option<PlayerId> {
-        if won(self.my_bb) {
-            Some(self.player)
-        } else if won(self.op_bb) {
+        if won(self.op_bb) {
             Some(self.player.next())
         } else {
             None

@@ -9,10 +9,10 @@ https://lczero.org/blog/2018/12/alphazero-paper-and-lc0-v0191/
 
 This repo is a cargo workspace made up of multiple crates & binaries:
 
+- ragz: The main crate with all the main training & MCTS logic in it
+- riches: A binary that uses the ragz library & holds game specific code/NNs for each game
 - base65536: A small crate to encode/decode u8's into valid utf-8 strings
 - slimnn: A small neural network crate in pure rust
-- ragz: The main crate with all the main training logic in it
-- riches: A binary that uses the ragz library
 - invest: A binary that saves pytorch weights into a format slimnn can understand
 
 TODOS

@@ -158,9 +158,10 @@ pub fn trainer<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
                 let zeros = tch::Tensor::zeros_like(&target_pi);
                 let legal_log_pi = log_pi.where1(&target_pi.greater1(&zeros), &zeros);
 
-                let pi_loss = (legal_log_pi * -target_pi)
-                    .sum1(&[-1], true, Kind::Float)
-                    .mean(Kind::Float);
+                // let pi_loss = (legal_log_pi * -target_pi)
+                //     .sum1(&[-1], true, Kind::Float)
+                //     .mean(Kind::Float);
+                let pi_loss = (legal_log_pi * -target_pi).mean(Kind::Float);
                 let v_loss = (v - target_v).square().mean(Kind::Float);
 
                 let loss = &pi_loss + &v_loss;
