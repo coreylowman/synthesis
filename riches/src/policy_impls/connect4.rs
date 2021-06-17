@@ -46,14 +46,9 @@ impl NNPolicy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
     }
 
     fn forward(&self, xs: &Tensor) -> (Tensor, Tensor) {
-        let xs = xs
-            .apply(&self.c_1)
-            .relu()
-            .apply(&self.c_2)
-            .relu()
-            .flat_view();
+        let xs = xs.apply(&self.c_1).relu().flat_view();
         (
-            xs.apply(&self.p_1),
+            xs.apply(&self.p_1).relu().apply(&self.p_2),
             xs.apply(&self.v_1).relu().apply(&self.v_2).tanh(),
         )
     }
