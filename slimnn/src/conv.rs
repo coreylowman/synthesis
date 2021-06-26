@@ -10,6 +10,12 @@ pub struct Conv2d<
     pub bias: [f32; NUM_CHAN_OUT],
 }
 
+pub type DefaultConv2d<
+    const NUM_CHAN_IN: usize,
+    const NUM_CHAN_OUT: usize,
+    const KERNEL_SIZE: usize,
+> = Conv2d<NUM_CHAN_IN, NUM_CHAN_OUT, KERNEL_SIZE, 0, 0, 1>;
+
 impl<
         const NUM_CHAN_IN: usize,
         const NUM_CHAN_OUT: usize,
@@ -46,29 +52,28 @@ impl<
 
         let mut y = [[[0.0; W_OUT]; H_OUT]; NUM_CHAN_OUT];
         for i_cout in 0..NUM_CHAN_OUT {
-            let ycout = &mut y[i_cout];
-            let wcout = &self.weight[i_cout];
             for i_out_row in 0..H_OUT {
-                let yrow = &mut ycout[i_out_row];
                 for i_out_col in 0..W_OUT {
-                    let ycol = &mut yrow[i_out_col];
-                    *ycol = self.bias[i_cout];
-                    for i_cin in 0..NUM_CHAN_IN {
-                        let wcin = &wcout[i_cin];
-                        let xcin = &x[i_cin];
+                    y[i_cout][i_out_row][i_out_col] = self.bias[i_cout];
+                }
+            }
+        }
+
+        for i_cout in 0..NUM_CHAN_OUT {
+            for i_cin in 0..NUM_CHAN_IN {
+                for i_out_row in 0..H_OUT {
+                    for i_out_col in 0..W_OUT {
                         for i_k1 in 0..KERNEL_SIZE {
-                            let wk1 = &wcin[i_k1];
                             let i_in_row = i_out_row * STRIDE + i_k1;
-                            for i_k2 in 0..KERNEL_SIZE {
-                                let i_in_col = i_out_col * STRIDE + i_k2;
-                                if ROW_PADDING <= i_in_row
-                                    && i_in_row < H_IN + ROW_PADDING
-                                    && COL_PADDING <= i_in_col
-                                    && i_in_col < W_IN + COL_PADDING
-                                {
-                                    let w = wk1[i_k2];
-                                    let v = xcin[i_in_row - ROW_PADDING][i_in_col - COL_PADDING];
-                                    *ycol += w * v;
+                            if ROW_PADDING <= i_in_row && i_in_row < H_IN + ROW_PADDING {
+                                for i_k2 in 0..KERNEL_SIZE {
+                                    let i_in_col = i_out_col * STRIDE + i_k2;
+                                    if COL_PADDING <= i_in_col && i_in_col < W_IN + COL_PADDING {
+                                        let w = self.weight[i_cout][i_cin][i_k1][i_k2];
+                                        let v = x[i_cin][i_in_row - ROW_PADDING]
+                                            [i_in_col - COL_PADDING];
+                                        y[i_cout][i_out_row][i_out_col] += w * v;
+                                    }
                                 }
                             }
                         }
