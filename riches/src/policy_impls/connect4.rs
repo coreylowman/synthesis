@@ -3,9 +3,29 @@ use ragz::prelude::*;
 use slimnn::{Activation, Conv2d, Linear, ReLU, Softmax};
 use tch::{
     self,
-    nn::{self, ConvConfigND},
+    nn::{self, ConvConfig},
     Tensor,
 };
+
+fn to_float<const W: usize, const H: usize, const C: usize>(
+    x_bool: &[[[bool; W]; H]; C],
+) -> [[[f32; W]; H]; C] {
+    let mut x_f32 = [[[0.0; W]; H]; C];
+    for i in 0..C {
+        let bool_i = &x_bool[i];
+        let f32_i = &mut x_f32[i];
+        for j in 0..H {
+            let bool_j = &bool_i[j];
+            let f32_j = &mut f32_i[j];
+            for k in 0..W {
+                if bool_j[k] {
+                    f32_j[k] = 1.0;
+                }
+            }
+        }
+    }
+    x_f32
+}
 
 pub struct Connect4Net {
     c_1: nn::Conv2D,
@@ -22,25 +42,24 @@ impl NNPolicy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
         assert!(state_dims.len() == 4);
         assert!(state_dims[0] == 1);
         Self {
-            c_1: nn::conv(
+            c_1: nn::conv2d(
                 root / "c_1",
                 2,
                 5,
-                [3, 3],
-                ConvConfigND {
-                    stride: [3, 3],
-                    padding: [1, 0],
+                3,
+                ConvConfig {
+                    stride: 2,
                     ..Default::default()
                 },
             ),
-            p_1: nn::linear(root / "p_1", 5 * 3 * 3, 32, Default::default()),
+            p_1: nn::linear(root / "p_1", 60, 32, Default::default()),
             p_2: nn::linear(
                 root / "p_2",
                 32,
                 Connect4::MAX_NUM_ACTIONS as i64,
                 Default::default(),
             ),
-            v_1: nn::linear(root / "v_1", 5 * 3 * 3, 32, Default::default()),
+            v_1: nn::linear(root / "v_1", 60, 32, Default::default()),
             v_2: nn::linear(root / "v_2", 32, 1, Default::default()),
         }
     }
@@ -57,9 +76,10 @@ impl NNPolicy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
 impl Policy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
     fn eval(
         &mut self,
-        xs: &<Connect4 as Env<{ Connect4::MAX_NUM_ACTIONS }>>::State,
+        state: &<Connect4 as Env<{ Connect4::MAX_NUM_ACTIONS }>>::State,
     ) -> ([f32; Connect4::MAX_NUM_ACTIONS], f32) {
-        let t = tensor(xs, &Connect4::get_state_dims(), tch::Kind::Bool).to_kind(tch::Kind::Float);
+        let xs = to_float(state);
+        let t = tensor(&xs, &[1, 2, 7, 9], tch::Kind::Float);
         let (logits, value) = self.forward(&t);
         let mut policy = [0.0f32; Connect4::MAX_NUM_ACTIONS];
         logits
@@ -72,19 +92,19 @@ impl Policy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
 
 #[derive(Default)]
 pub struct SlimC4Net {
-    c_1: Conv2d<2, 5, 3, 1, 0, 3>,
-    p_1: Linear<{ 5 * 3 * 3 }, 32>,
+    c_1: Conv2d<2, 5, 3, 0, 0, 2>,
+    p_1: Linear<60, 32>,
     p_2: Linear<32, { Connect4::MAX_NUM_ACTIONS }>,
-    v_1: Linear<{ 5 * 3 * 3 }, 32>,
+    v_1: Linear<60, 32>,
     v_2: Linear<32, 1>,
 }
 
 impl SlimC4Net {
     fn forward(&self, x: &[[[f32; 9]; 7]; 2]) -> ([f32; Connect4::MAX_NUM_ACTIONS], f32) {
-        let x = self.c_1.forward::<9, 7, 3, 3>(x);
+        let x = self.c_1.forward::<9, 7, 4, 3>(x);
         let x = ReLU.apply_3d(&x);
 
-        let x: [f32; 5 * 3 * 3] = unsafe { std::mem::transmute(x) };
+        let x: [f32; 60] = unsafe { std::mem::transmute(x) };
 
         let px = self.p_1.forward(&x);
         let px = ReLU.apply_1d(&px);
@@ -101,16 +121,9 @@ impl SlimC4Net {
 impl Policy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for SlimC4Net {
     fn eval(
         &mut self,
-        xs: &<Connect4 as Env<{ Connect4::MAX_NUM_ACTIONS }>>::State,
+        state: &<Connect4 as Env<{ Connect4::MAX_NUM_ACTIONS }>>::State,
     ) -> ([f32; Connect4::MAX_NUM_ACTIONS], f32) {
-        let mut x = [[[0.0; 9]; 7]; 2];
-        for i in 0..2 {
-            for j in 0..7 {
-                for k in 0..9 {
-                    x[i][j][k] = if xs[i][j][k] { 1.0 } else { 0.0 };
-                }
-            }
-        }
+        let x = to_float(state);
         let (logits, value) = self.forward(&x);
         let policy = Softmax.apply_1d(&logits);
         (policy, value)

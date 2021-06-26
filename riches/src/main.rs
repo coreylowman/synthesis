@@ -4,7 +4,7 @@ mod policy_impls;
 use crate::envs::*;
 use crate::policy_impls::*;
 use ragz::prelude::*;
-use ragz::{evaluator, train_dir, trainer, RolloutConfig, TrainConfig};
+use ragz::{evaluator, train_dir, trainer, RolloutConfig, TrainConfig, ValueTarget};
 
 fn run<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -27,6 +27,7 @@ fn run<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
         noisy_explore: true,
         noise_weight: 0.25,
         c_puct: 2.0,
+        value_target: ValueTarget::InterpolateForSamples,
     };
 
     let eval_train_cfg = train_cfg.clone();
