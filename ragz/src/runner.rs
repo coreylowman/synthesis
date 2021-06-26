@@ -12,6 +12,15 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum ValueTarget {
+    Z,                     // Outcome of game {-1, 0, 1}
+    Q,                     // Avg Value found while searching
+    Interpolate,           // interpolate between Z and Q
+    QForSamples,           // Q if action is sampled, Z if action is exploit
+    InterpolateForSamples, // Interp if action is sampled, Z if action is exploit
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct RolloutConfig {
     pub buffer_size: usize,
     pub num_explores: usize,
@@ -21,6 +30,44 @@ pub struct RolloutConfig {
     pub noisy_explore: bool,
     pub noise_weight: f32,
     pub c_puct: f32,
+    pub value_target: ValueTarget,
+}
+
+fn store_rewards<E: Env<N>, const N: usize>(
+    cfg: &RolloutConfig,
+    buffer: &mut ReplayBuffer<E, N>,
+    start_i: usize,
+    mut r: f32,
+) {
+    // NOTE: buffer.vs[i] already has q value in it
+    let num_turns = buffer.vs.len() as f32 - start_i as f32;
+    for (turn, i) in (start_i..buffer.vs.len()).enumerate() {
+        buffer.vs[i] = match cfg.value_target {
+            ValueTarget::Q => buffer.vs[i],
+            ValueTarget::Z => r,
+            ValueTarget::Interpolate => {
+                let t = (turn + 1) as f32 / num_turns;
+                r * t + buffer.vs[i] * (1.0 - t)
+            }
+            ValueTarget::QForSamples => {
+                if turn < cfg.sample_action_until {
+                    buffer.vs[i]
+                } else {
+                    r
+                }
+            }
+            ValueTarget::InterpolateForSamples => {
+                let t = (turn + 1) as f32 / num_turns;
+                if turn < cfg.sample_action_until {
+                    r * t + buffer.vs[i] * (1.0 - t)
+                } else {
+                    r
+                }
+            }
+        };
+
+        r = -r;
+    }
 }
 
 fn run_game<E: Env<N>, P: Policy<E, N>, R: Rng, const N: usize>(
@@ -57,7 +104,11 @@ fn run_game<E: Env<N>, P: Policy<E, N>, R: Rng, const N: usize>(
         }
 
         // root_node.cum_value / root_node.num_visits,
-        buffer.add(mcts.root_state(), &search_policy, 0.0);
+        buffer.add(
+            mcts.root_state(),
+            &search_policy,
+            root_node.cum_value / cfg.num_explores as f32,
+        );
 
         let action = if num_turns < cfg.sample_action_until {
             let dist = WeightedIndex::new(&search_policy).unwrap();
@@ -71,11 +122,7 @@ fn run_game<E: Env<N>, P: Policy<E, N>, R: Rng, const N: usize>(
         num_turns += 1;
     }
 
-    let mut r = game.reward(start_player);
-    for i in start_i..buffer.vs.len() {
-        buffer.vs[i] = r;
-        r *= -1.0;
-    }
+    store_rewards(cfg, buffer, start_i, game.reward(start_player));
 }
 
 fn run_vanilla_mcts_game<E: Env<N>, R: Rng, const N: usize>(
@@ -85,6 +132,7 @@ fn run_vanilla_mcts_game<E: Env<N>, R: Rng, const N: usize>(
 ) {
     let mut game = E::new();
     let mut is_over = false;
+    let mut num_turns = 0;
     let mut search_policy = [0.0; N];
     let start_i = buffer.vs.len();
     let start_player = game.player();
@@ -102,20 +150,25 @@ fn run_vanilla_mcts_game<E: Env<N>, R: Rng, const N: usize>(
             search_policy[action.into()] = child.num_visits / cfg.num_explores as f32;
         }
 
-        buffer.add(&game.state(), &search_policy, 0.0);
+        buffer.add(
+            &game.state(),
+            &search_policy,
+            root_node.cum_value / cfg.num_explores as f32,
+        );
 
-        let dist = WeightedIndex::new(&search_policy).unwrap();
-        let choice = dist.sample(rng);
-        let action = E::Action::from(choice);
+        let action = if num_turns < cfg.sample_action_until {
+            let dist = WeightedIndex::new(&search_policy).unwrap();
+            let choice = dist.sample(rng);
+            E::Action::from(choice)
+        } else {
+            mcts.best_action()
+        };
 
         is_over = game.step(&action);
+        num_turns += 1;
     }
 
-    let mut r = game.reward(start_player);
-    for i in start_i..buffer.vs.len() {
-        buffer.vs[i] = r;
-        r *= -1.0;
-    }
+    store_rewards(cfg, buffer, start_i, game.reward(start_player));
 }
 
 pub fn eval_against_random<E: Env<N>, P: Policy<E, N>, const N: usize>(

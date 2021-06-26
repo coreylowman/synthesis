@@ -31,26 +31,24 @@ TODOS
 - [x] cache evals during rollout
 - [x] sliding windows of games instead of full regeneration
 - [x] compare NN against optimal dataset
-- [ ] calculate c_puct instead of hardcoding
-- [ ] multiple rollout processes
 - [x] rollout & eval separate processes
 - [x] self play ELO
 - [x] library for NN CPU execution & serialization/deserialization to string
 - [x] improve NN specification & log NN structure
 - [x] log game
+- [x] fill buffer with random games at first
+- [ ] calculate c_puct instead of hardcoding
+- [ ] multiple rollout processes
 - [ ] MCTS with solver
+    - [ ] abort games if solver figures out if outcome is decided
 - [ ] Assume un-evaluated node (FPU) as -1
-- [ ] Use fraction of Q value + end game value
+- [ ] Use fraction of Q value + end game value.
+  - [ ] linear interpolate based on turn in game where 1st turn gets q value, last turn gets v
+  - [ ] interpolate with x ** ((1 - x) ** 2)
 - [ ] Value head as distribution of {W,D,L}
+- [ ] force first move in C4 to be 1 or 7
 - [ ] shuffle action iterator to reduce bias of first moves in action iterator
-- [ ] fill buffer with random games at first
-
-the optimistic excuse algorithm:
-  - only give a reward of -1 if you are using all the best actions and still lose
-  - if you use any explore actions, you auto get a reward of 1 for that game
-
-the try hard and the explorer:
-    - 1 player plays best moves, other player explores
-    - explorer stores (v+q)/2, max(v, q), or q
-    - try hard stores v
-
+- [ ] speed up conv2d with im2col https://leonardoaraujosantos.gitbook.io/artificial-inteligence/machine_learning/deep_learning/convolution_layer/making_faster
+  - [ ] https://sahnimanas.github.io/post/anatomy-of-a-high-performance-convolution/
+- [ ] reverse linear weight dimensions for speed up
+- [ ] make a MCTS trait and have runner use that
