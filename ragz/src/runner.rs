@@ -13,19 +13,21 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum ValueTarget {
-    Z,                     // Outcome of game {-1, 0, 1}
-    Q,                     // Avg Value found while searching
-    Interpolate,           // interpolate between Z and Q
-    QForSamples,           // Q if action is sampled, Z if action is exploit
-    InterpolateForSamples, // Interp if action is sampled, Z if action is exploit
+    Z,                          // Outcome of game {-1, 0, 1}
+    Q,                          // Avg Value found while searching
+    Interpolate,                // interpolate between Z and Q
+    QForSamples,                // Q if action is sampled, Z if action is exploit
+    InterpolateForSamples,      // Interp if action is sampled, Z if action is exploit
+    SteepInterpolateForSamples, // Interp to end of sampling if action is sampled, Z if action is exploit
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct RolloutConfig {
     pub buffer_size: usize,
+    pub games_to_keep: usize,
+    pub games_per_train: usize,
     pub num_explores: usize,
     pub sample_action_until: usize,
-    pub steps: usize,
     pub alpha: f32,
     pub noisy_explore: bool,
     pub noise_weight: f32,
@@ -40,8 +42,8 @@ fn store_rewards<E: Env<N>, const N: usize>(
     mut r: f32,
 ) {
     // NOTE: buffer.vs[i] already has q value in it
-    let num_turns = buffer.vs.len() as f32 - start_i as f32;
-    for (turn, i) in (start_i..buffer.vs.len()).enumerate() {
+    let num_turns = buffer.curr_steps() as f32 - start_i as f32;
+    for (turn, i) in (start_i..buffer.curr_steps()).enumerate() {
         buffer.vs[i] = match cfg.value_target {
             ValueTarget::Q => buffer.vs[i],
             ValueTarget::Z => r,
@@ -58,6 +60,14 @@ fn store_rewards<E: Env<N>, const N: usize>(
             }
             ValueTarget::InterpolateForSamples => {
                 let t = (turn + 1) as f32 / num_turns;
+                if turn < cfg.sample_action_until {
+                    r * t + buffer.vs[i] * (1.0 - t)
+                } else {
+                    r
+                }
+            }
+            ValueTarget::SteepInterpolateForSamples => {
+                let t = (turn + 1) as f32 / cfg.sample_action_until as f32;
                 if turn < cfg.sample_action_until {
                     r * t + buffer.vs[i] * (1.0 - t)
                 } else {
@@ -247,23 +257,20 @@ pub fn gather_experience<E: Env<N>, P: Policy<E, N>, R: Rng, const N: usize>(
 ) {
     let mut cached_policy = PolicyWithCache {
         policy,
-        cache: HashMap::with_capacity(cfg.steps * 2),
+        cache: HashMap::with_capacity(100 * cfg.games_per_train),
     };
 
-    buffer.make_room(cfg.steps);
-    let target = buffer.vs.len() + cfg.steps;
-    let bar = ProgressBar::new(cfg.steps as u64);
+    buffer.keep_last_n_games(cfg.games_to_keep);
+    let bar = ProgressBar::new(cfg.games_per_train as u64);
     bar.set_style(
         ProgressStyle::default_bar()
             .template("[{bar:40}] {percent}% {pos}/{len} {per_sec} {elapsed_precise}")
             .progress_chars("|| "),
     );
-    let mut last = buffer.curr_steps();
-    while buffer.vs.len() < target {
+    for _ in 0..cfg.games_per_train {
         buffer.new_game();
         run_game(cfg, &mut cached_policy, rng, buffer);
-        bar.inc((buffer.curr_steps() - last) as u64);
-        last = buffer.curr_steps();
+        bar.inc(1);
     }
     bar.finish();
 }
@@ -273,18 +280,17 @@ pub fn fill_buffer<E: Env<N>, R: Rng, const N: usize>(
     rng: &mut R,
     buffer: &mut ReplayBuffer<E, N>,
 ) {
-    let target = cfg.buffer_size - cfg.steps;
+    let target = cfg.games_to_keep - cfg.games_per_train;
     let bar = ProgressBar::new(target as u64);
     bar.set_style(
         ProgressStyle::default_bar()
             .template("[{bar:40}] {percent}% {pos}/{len} {per_sec} {elapsed_precise}")
             .progress_chars("|| "),
     );
-    let mut last = buffer.curr_steps();
-    while buffer.vs.len() < target {
+    for _ in 0..target {
+        buffer.new_game();
         run_vanilla_mcts_game(cfg, rng, buffer);
-        bar.inc((buffer.curr_steps() - last) as u64);
-        last = buffer.curr_steps();
+        bar.inc(1);
     }
     bar.finish();
 }

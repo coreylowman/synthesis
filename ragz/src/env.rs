@@ -14,6 +14,7 @@ pub trait Env<const N: usize>: Clone {
     const NUM_PLAYERS: usize;
 
     fn new() -> Self;
+    fn restore(state: &Self::State) -> Self;
     fn get_state_dims() -> Vec<i64>;
 
     fn player(&self) -> Self::PlayerId;

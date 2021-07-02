@@ -136,6 +136,12 @@ pub fn trainer<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
         }
 
         // convert to tensors
+        let flat_batch = buffer.deduplicate();
+        println!(
+            "Deduplicated {} -> {} steps",
+            buffer.vs.len(),
+            flat_batch.vs.len()
+        );
         dims[0] = buffer.vs.len() as i64;
         let states = tensor(&buffer.states, &dims, Kind::Bool).to_kind(tch::Kind::Float);
         let target_pis = tensor(&buffer.pis, &[dims[0], N as i64], Kind::Float);

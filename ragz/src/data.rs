@@ -1,5 +1,5 @@
 use crate::env::Env;
-use std::ffi::c_void;
+use std::{collections::HashMap, ffi::c_void};
 use tch::{Kind, Tensor};
 use torch_sys::at_tensor_of_data;
 
@@ -89,8 +89,19 @@ pub fn tensor<T>(data: &[T], dims: &[i64], kind: tch::Kind) -> Tensor {
     unsafe { Tensor::from_ptr(at_tensor_of_data(data, dims, ndims, dsize, dtype)) }
 }
 
+pub struct FlatBatch<E: Env<N>, const N: usize> {
+    pub states: Vec<E::State>,
+    pub pis: Vec<[f32; N]>,
+    pub vs: Vec<f32>,
+}
+
+struct StateStatistics<const N: usize> {
+    sum_pi: [f32; N],
+    sum_v: f32,
+    num: u32,
+}
+
 pub struct ReplayBuffer<E: Env<N>, const N: usize> {
-    capacity: usize,
     game_id: usize,
     steps: usize,
     game_ids: Vec<usize>,
@@ -102,7 +113,6 @@ pub struct ReplayBuffer<E: Env<N>, const N: usize> {
 impl<E: Env<N>, const N: usize> ReplayBuffer<E, N> {
     pub fn new(n: usize) -> Self {
         Self {
-            capacity: n,
             game_id: 0,
             steps: 0,
             game_ids: Vec::with_capacity(n),
@@ -142,14 +152,59 @@ impl<E: Env<N>, const N: usize> ReplayBuffer<E, N> {
         self.vs.push(v);
     }
 
-    pub fn make_room(&mut self, n: usize) {
-        if self.vs.len() + n > self.capacity {
-            let num_to_drop = self.vs.len() + n - self.capacity;
-            drop(self.game_ids.drain(0..num_to_drop));
-            drop(self.states.drain(0..num_to_drop));
-            drop(self.pis.drain(0..num_to_drop));
-            drop(self.vs.drain(0..num_to_drop));
+    pub fn keep_last_n_games(&mut self, n: usize) {
+        if self.game_id <= n {
+            return;
         }
-        assert!(self.vs.len() + n <= self.capacity);
+
+        let min_game_id = self.game_id - n;
+
+        let mut max_ind_to_remove = None;
+        for (i, &game_id) in self.game_ids.iter().enumerate() {
+            if game_id >= min_game_id {
+                break;
+            }
+            max_ind_to_remove = Some(i);
+        }
+        if let Some(max_ind) = max_ind_to_remove {
+            drop(self.game_ids.drain(0..max_ind));
+            drop(self.states.drain(0..max_ind));
+            drop(self.pis.drain(0..max_ind));
+            drop(self.vs.drain(0..max_ind));
+        }
+    }
+
+    pub fn deduplicate(&self) -> FlatBatch<E, N> {
+        let mut statistics = HashMap::with_capacity(100 * self.game_ids.len());
+        for i in 0..self.game_ids.len() {
+            let stats = statistics
+                .entry(self.states[i].clone())
+                .or_insert(StateStatistics {
+                    sum_pi: [0.0; N],
+                    sum_v: 0.0,
+                    num: 0,
+                });
+            for j in 0..N {
+                stats.sum_pi[j] += self.pis[i][j];
+            }
+            stats.sum_v += self.vs[i];
+            stats.num += 1;
+        }
+
+        let mut states = Vec::with_capacity(statistics.len());
+        let mut pis = Vec::with_capacity(statistics.len());
+        let mut vs = Vec::with_capacity(statistics.len());
+        for (state, stats) in statistics.iter() {
+            let mut avg_pi = [0.0; N];
+            for i in 0..N {
+                avg_pi[i] = stats.sum_pi[i] / stats.num as f32;
+            }
+            let avg_v = stats.sum_v / stats.num as f32;
+            states.push(state.clone());
+            pis.push(avg_pi);
+            vs.push(avg_v);
+        }
+
+        FlatBatch { states, pis, vs }
     }
 }

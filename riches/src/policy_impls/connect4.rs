@@ -40,7 +40,7 @@ impl NNPolicy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
         let root = &vs.root();
         let state_dims = Connect4::get_state_dims();
         assert!(state_dims.len() == 4);
-        assert!(state_dims[0] == 1);
+        assert!(&state_dims == &[1, 2, 7, 9]);
         Self {
             c_1: nn::conv2d(
                 root / "c_1",

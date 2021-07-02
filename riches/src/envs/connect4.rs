@@ -158,6 +158,40 @@ impl Env<WIDTH> for Connect4 {
         }
     }
 
+    fn restore(state: &Self::State) -> Self {
+        let mut my_bb = 0;
+        let mut op_bb = 0;
+        let mut height = [0; WIDTH];
+        let mut num = 0;
+        for row in 0..HEIGHT {
+            for col in 0..WIDTH {
+                let index = 1 << (row + HEIGHT * col);
+                if state[0][row][col] {
+                    my_bb |= index;
+                    height[col] = row as u8;
+                    num += 1;
+                } else if state[1][row][col] {
+                    op_bb |= index;
+                    height[col] = row as u8;
+                    num += 1;
+                };
+            }
+        }
+        let player = if num % 2 == 0 {
+            PlayerId::Red
+        } else {
+            PlayerId::Black
+        };
+        let o = Self {
+            my_bb,
+            op_bb,
+            height,
+            player,
+        };
+        assert_eq!(o.state(), *state);
+        o
+    }
+
     fn player(&self) -> Self::PlayerId {
         self.player
     }
@@ -205,7 +239,6 @@ impl Env<WIDTH> for Connect4 {
     }
 
     fn state(&self) -> Self::State {
-        // TODO try to store this in env itself... memory for speed
         let mut s = [[[false; WIDTH]; HEIGHT]; 2];
         for row in 0..HEIGHT {
             for col in 0..WIDTH {
