@@ -28,7 +28,8 @@ fn run<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
         noisy_explore: true,
         noise_weight: 0.25,
         c_puct: 2.0,
-        value_target: ValueTarget::InterpolateForSamples,
+        solve: true,
+        value_target: ValueTarget::Interpolate,
     };
 
     let eval_train_cfg = train_cfg.clone();

@@ -37,18 +37,50 @@ TODOS
 - [x] improve NN specification & log NN structure
 - [x] log game
 - [x] fill buffer with random games at first
-- [ ] calculate c_puct instead of hardcoding
-- [ ] multiple rollout processes
-- [ ] MCTS with solver
-    - [ ] abort games if solver figures out if outcome is decided
+- [x] Use fraction of Q value + end game value.
+  - [x] linear interpolate based on turn in game where 1st turn gets q value, last turn gets v
+- [x] MCTS with solver
+  - [ ] abort games if solver figures out if outcome is decided
+- [ ] minimax value target (instead of Q)
+- [ ] smart deduplication in training data (ie average all stats for each state)
+- [ ] move order by action prob while expanding a node
 - [ ] Assume un-evaluated node (FPU) as -1
-- [ ] Use fraction of Q value + end game value.
-  - [ ] linear interpolate based on turn in game where 1st turn gets q value, last turn gets v
-  - [ ] interpolate with x ** ((1 - x) ** 2)
+- [ ] separate exploration/exploitation
+  - [ ] exploration process that builds off of self play line by sampling other states backward
+  - [ ] exploit process that samples a state from ^ and exploits all the way down
+- [ ] change sample_actions_until throughout training
+  - [ ] schedule
+  - [ ] sample range
+- [ ] change learning rate throughout training (cyclic? linear decrease?)
+- [ ] calculate c_puct instead of hardcoding
+
+Neural Network Architecture
 - [ ] Value head as distribution of {W,D,L}
-- [ ] force first move in C4 to be 1 or 7
-- [ ] shuffle action iterator to reduce bias of first moves in action iterator
+- [ ] output
+  - [ ] clamp instead of tanh?
+  - [ ] no final activation for value, but clamp in eval()?
+
+Quality of life todos
+- [ ] save replay buffer along with weights so you can resume training
+- [x] make a general MCTS struct
+- [ ] squash runner rollout functions into 1
+
+Efficiency todos
 - [ ] speed up conv2d with im2col https://leonardoaraujosantos.gitbook.io/artificial-inteligence/machine_learning/deep_learning/convolution_layer/making_faster
   - [ ] https://sahnimanas.github.io/post/anatomy-of-a-high-performance-convolution/
 - [ ] reverse linear weight dimensions for speed up
-- [ ] make a MCTS trait and have runner use that
+- [ ] C4 63x3 -> 256 -> 16 (first 9 policy, 10th value, last 6 unused for speed)
+- [ ] transposition table hash
+- [ ] support outputting 16 bit floats instead of 32 bit floats https://github.com/starkat99/half-rs/blob/master/src/bfloat/convert.rs
+
+- [ ] look into https://github.com/leela-zero/leela-zero/issues/1156
+
+
+
+```
+queue of steps
+for X number of games:
+  pop step
+  restore game to step's state
+  play through game exploitatively, adding steps to queue
+```

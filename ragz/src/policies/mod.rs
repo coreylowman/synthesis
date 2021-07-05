@@ -1,7 +1,7 @@
 mod cache;
-mod storage;
+mod rollout;
 mod traits;
 
 pub use cache::{OwnedPolicyWithCache, PolicyWithCache};
-pub use storage::PolicyStorage;
+pub use rollout::RolloutPolicy;
 pub use traits::{NNPolicy, Policy};

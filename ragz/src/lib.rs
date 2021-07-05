@@ -5,7 +5,6 @@ pub mod policies;
 pub mod prelude;
 mod runner;
 mod utils;
-mod vanilla_mcts;
 
 use crate::data::*;
 use crate::env::*;

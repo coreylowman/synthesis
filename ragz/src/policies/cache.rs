@@ -8,12 +8,13 @@ pub struct PolicyWithCache<'a, E: Env<N>, P: Policy<E, N>, const N: usize> {
 }
 
 impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> Policy<E, N> for PolicyWithCache<'a, E, P, N> {
-    fn eval(&mut self, state: &E::State) -> ([f32; N], f32) {
-        match self.cache.get(state) {
+    fn eval(&mut self, env: &E) -> ([f32; N], f32) {
+        let state = env.state();
+        match self.cache.get(&state) {
             Some(&(pi, v)) => (pi, v),
             None => {
-                let (pi, v) = self.policy.eval(state);
-                self.cache.insert(state.clone(), (pi, v));
+                let (pi, v) = self.policy.eval(env);
+                self.cache.insert(state, (pi, v));
                 (pi, v)
             }
         }
@@ -26,12 +27,13 @@ pub struct OwnedPolicyWithCache<E: Env<N>, P: Policy<E, N>, const N: usize> {
 }
 
 impl<E: Env<N>, P: Policy<E, N>, const N: usize> Policy<E, N> for OwnedPolicyWithCache<E, P, N> {
-    fn eval(&mut self, state: &E::State) -> ([f32; N], f32) {
-        match self.cache.get(state) {
+    fn eval(&mut self, env: &E) -> ([f32; N], f32) {
+        let state = env.state();
+        match self.cache.get(&state) {
             Some(&(pi, v)) => (pi, v),
             None => {
-                let (pi, v) = self.policy.eval(state);
-                self.cache.insert(state.clone(), (pi, v));
+                let (pi, v) = self.policy.eval(env);
+                self.cache.insert(state, (pi, v));
                 (pi, v)
             }
         }
