@@ -74,11 +74,9 @@ impl NNPolicy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
 }
 
 impl Policy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
-    fn eval(
-        &mut self,
-        state: &<Connect4 as Env<{ Connect4::MAX_NUM_ACTIONS }>>::State,
-    ) -> ([f32; Connect4::MAX_NUM_ACTIONS], f32) {
-        let xs = to_float(state);
+    fn eval(&mut self, env: &Connect4) -> ([f32; Connect4::MAX_NUM_ACTIONS], f32) {
+        let state = env.state();
+        let xs = to_float(&state);
         let t = tensor(&xs, &[1, 2, 7, 9], tch::Kind::Float);
         let (logits, value) = self.forward(&t);
         let mut policy = [0.0f32; Connect4::MAX_NUM_ACTIONS];
@@ -119,11 +117,9 @@ impl SlimC4Net {
 }
 
 impl Policy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for SlimC4Net {
-    fn eval(
-        &mut self,
-        state: &<Connect4 as Env<{ Connect4::MAX_NUM_ACTIONS }>>::State,
-    ) -> ([f32; Connect4::MAX_NUM_ACTIONS], f32) {
-        let x = to_float(state);
+    fn eval(&mut self, env: &Connect4) -> ([f32; Connect4::MAX_NUM_ACTIONS], f32) {
+        let state = env.state();
+        let x = to_float(&state);
         let (logits, value) = self.forward(&x);
         let policy = Softmax.apply_1d(&logits);
         (policy, value)
