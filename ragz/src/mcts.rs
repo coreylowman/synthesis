@@ -88,8 +88,15 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
         &mut self.nodes[(node_id - self.offset) as usize]
     }
 
-    pub fn outcome(&self) -> Option<bool> {
-        self.node(self.root).outcome
+    pub fn outcome(&self, action: &E::Action) -> Option<bool> {
+        let root = self.node(self.root);
+        let child_ind = root
+            .children
+            .iter()
+            .position(|(a, _child_id)| a == action)
+            .unwrap();
+        let child = self.node(root.children[child_ind].1);
+        child.outcome
     }
 
     pub fn extract_search_policy(&self, search_policy: &mut [f32; N]) {
@@ -163,14 +170,14 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
                         // create the child node... note we will be modifying num_visits and reward later, so mutable
                         let mut env = node.env.clone();
                         let is_over = env.step(&action);
-                        let (action_probs, value, outcome) = if is_over {
+                        let (logits, value, outcome) = if is_over {
                             let r = env.reward(env.player());
                             ([0.0; N], r, Some(r > 0.0))
                         } else {
-                            let (action_probs, value) = self.policy.eval(&env);
-                            (action_probs, value, None)
+                            let (logits, value) = self.policy.eval(&env);
+                            (logits, value, None)
                         };
-                        let child = Node::new(node_id, env, is_over, outcome, action_probs, value);
+                        let child = Node::new(node_id, env, is_over, outcome, logits, value);
                         self.nodes.push(child);
                         self.backprop(node_id, -value, is_over);
                         return;
@@ -178,15 +185,15 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
                     None => {
                         node.expanded = true;
 
-                        // renormalize probabilities based on valid actions
+                        // normalize probabilities based on valid actions
                         let mut total = 0.0;
                         let mut mask = [0.0; N];
                         for &(action, _child_id) in &node.children {
                             mask[action.into()] = 1.0;
-                            total += node.action_probs[action.into()];
+                            total += node.action_probs[action.into()].exp();
                         }
                         for i in 0..N {
-                            node.action_probs[i] *= mask[i] / total;
+                            node.action_probs[i] = node.action_probs[i].exp() * mask[i] / total;
                         }
 
                         node_id = self.select_best_child(node_id);
@@ -207,10 +214,10 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
             let child = self.node(child_id);
             // NOTE: -child.cum_value because child.cum_value is in opponent's win pct, so we want to convert to ours
             let value = match child.outcome {
-                Some(true) => -1.0,
+                Some(true) => 0.0,
                 Some(false) => 1.0,
                 None => {
-                    -child.cum_value / child.num_visits
+                    0.5 + -0.5 * child.cum_value / child.num_visits
                         + self.c_puct * node.action_probs[action.into()] * visits
                             / (1.0 + child.num_visits)
                 }

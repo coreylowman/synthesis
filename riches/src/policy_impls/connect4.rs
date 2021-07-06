@@ -81,7 +81,7 @@ impl Policy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
         let (logits, value) = self.forward(&t);
         let mut policy = [0.0f32; Connect4::MAX_NUM_ACTIONS];
         logits
-            .softmax(-1, tch::Kind::Float)
+            // .softmax(-1, tch::Kind::Float)
             .copy_data(&mut policy, Connect4::MAX_NUM_ACTIONS);
         let value = f32::from(&value);
         (policy, value)
@@ -121,7 +121,7 @@ impl Policy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for SlimC4Net {
         let state = env.state();
         let x = to_float(&state);
         let (logits, value) = self.forward(&x);
-        let policy = Softmax.apply_1d(&logits);
-        (policy, value)
+        // let policy = Softmax.apply_1d(&logits);
+        (logits, value)
     }
 }

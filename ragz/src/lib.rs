@@ -45,6 +45,39 @@ pub fn evaluator<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
     let first_player = E::new().player();
     let all_explores = [100, 200, 400, 800, 1600, 3200, 6400, 12800];
 
+    for i in 0..all_explores.len() {
+        for j in (i + 1)..all_explores.len() {
+            for seed in 0..10 {
+                let result = mcts_vs_mcts::<E, N>(
+                    &rollout_cfg,
+                    first_player,
+                    all_explores[i],
+                    all_explores[j],
+                    seed,
+                );
+                add_pgn_result(
+                    &mut pgn,
+                    &format!("VanillaMCTS{}", all_explores[i]),
+                    &format!("VanillaMCTS{}", all_explores[j]),
+                    result,
+                )?;
+                let result = mcts_vs_mcts::<E, N>(
+                    &rollout_cfg,
+                    first_player,
+                    all_explores[j],
+                    all_explores[i],
+                    seed,
+                );
+                add_pgn_result(
+                    &mut pgn,
+                    &format!("VanillaMCTS{}", all_explores[j]),
+                    &format!("VanillaMCTS{}", all_explores[i]),
+                    result,
+                )?;
+            }
+        }
+    }
+
     for i_iter in 0..train_cfg.num_iterations + 1 {
         // wait for model to exist;
         let name = format!("model_{}.ot", i_iter);
@@ -161,13 +194,21 @@ pub fn trainer<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
 
                 let log_pi = logits.log_softmax(-1, Kind::Float);
                 let zeros = tch::Tensor::zeros_like(&target_pi);
-                let legal_log_pi = log_pi.where1(&target_pi.greater1(&zeros), &zeros);
+                let illegal_values = -1e6 * tch::Tensor::ones_like(&target_pi);
+                // let legal_log_pi = log_pi.where1(&target_pi.greater1(&zeros), &zeros);
 
                 // let pi_loss = (-legal_log_pi * target_pi)
                 //     .sum1(&[-1], true, Kind::Float)
                 //     .mean(Kind::Float);
-                let pi_loss = (legal_log_pi * -target_pi).mean(Kind::Float);
-                let v_loss = (v - target_v).square().mean(Kind::Float);
+                // let pi_loss = (legal_log_pi * -target_pi).mean(Kind::Float);
+                let pi_loss = log_pi.kl_div(
+                    &target_pi
+                        .log()
+                        .where1(&target_pi.greater1(&zeros), &illegal_values),
+                    tch::Reduction::Mean,
+                    true,
+                );
+                let v_loss = v.mse_loss(&target_v, tch::Reduction::Mean);
 
                 let loss = &pi_loss + &v_loss;
                 opt.backward_step(&loss);

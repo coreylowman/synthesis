@@ -14,6 +14,7 @@ use std::collections::HashMap;
 pub enum ValueTarget {
     Z,                          // Outcome of game {-1, 0, 1}
     Q,                          // Avg Value found while searching
+    QZAverage,                  // (Q + Z) / 2
     Interpolate,                // interpolate between Z and Q
     QForSamples,                // Q if action is sampled, Z if action is exploit
     InterpolateForSamples,      // Interp if action is sampled, Z if action is exploit
@@ -47,6 +48,7 @@ fn store_rewards<E: Env<N>, const N: usize>(
         buffer.vs[i] = match cfg.value_target {
             ValueTarget::Q => buffer.vs[i],
             ValueTarget::Z => r,
+            ValueTarget::QZAverage => (buffer.vs[i] + r) / 2.0,
             ValueTarget::Interpolate => {
                 let t = (turn + 1) as f32 / num_turns;
                 r * t + buffer.vs[i] * (1.0 - t)
@@ -109,14 +111,15 @@ fn run_game<E: Env<N>, P: Policy<E, N>, R: Rng, const N: usize>(
 
         mcts.explore_n(cfg.num_explores);
         mcts.extract_search_policy(&mut search_policy);
+        let best = mcts.best_action();
         buffer.add(&game.state(), &search_policy, mcts.extract_q());
 
-        let action = if num_turns < cfg.sample_action_until && mcts.outcome().is_none() {
+        let action = if num_turns < cfg.sample_action_until && mcts.outcome(&best).is_none() {
             let dist = WeightedIndex::new(&search_policy).unwrap();
             let choice = dist.sample(rng);
             E::Action::from(choice)
         } else {
-            mcts.best_action()
+            best
         };
 
         is_over = game.step(&action);
@@ -150,14 +153,15 @@ fn run_vanilla_mcts_game<E: Env<N>, R: Rng, const N: usize>(
 
         mcts.explore_n(cfg.num_explores);
         mcts.extract_search_policy(&mut search_policy);
+        let best = mcts.best_action();
         buffer.add(&game.state(), &search_policy, mcts.extract_q());
 
-        let action = if num_turns < cfg.sample_action_until && mcts.outcome().is_none() {
+        let action = if num_turns < cfg.sample_action_until && mcts.outcome(&best).is_none() {
             let dist = WeightedIndex::new(&search_policy).unwrap();
             let choice = dist.sample(rng);
             E::Action::from(choice)
         } else {
-            mcts.best_action()
+            best
         };
 
         is_over = game.step(&action);
@@ -240,6 +244,39 @@ pub fn eval_against_vanilla_mcts<E: Env<N>, P: Policy<E, N>, const N: usize>(
     game.reward(first_player)
 }
 
+pub fn mcts_vs_mcts<E: Env<N>, const N: usize>(
+    cfg: &RolloutConfig,
+    player: E::PlayerId,
+    p1_explores: usize,
+    p2_explores: usize,
+    seed: u64,
+) -> f32 {
+    let mut rng = StdRng::seed_from_u64(seed);
+    let mut rollout_policy = RolloutPolicy { rng: &mut rng };
+    let mut game = E::new();
+    let first_player = game.player();
+    loop {
+        let explores = if game.player() == player {
+            p1_explores
+        } else {
+            p2_explores
+        };
+        let mut mcts = MCTS::<E, RolloutPolicy<StdRng>, N>::with_capacity(
+            explores + 1,
+            cfg.c_puct,
+            cfg.solve,
+            &mut rollout_policy,
+            game.clone(),
+        );
+        mcts.explore_n(explores);
+        let action = mcts.best_action();
+        if game.step(&action) {
+            break;
+        }
+    }
+    game.reward(first_player)
+}
+
 pub fn gather_experience<E: Env<N>, P: Policy<E, N>, R: Rng, const N: usize>(
     cfg: &RolloutConfig,
     policy: &mut P,
@@ -251,7 +288,7 @@ pub fn gather_experience<E: Env<N>, P: Policy<E, N>, R: Rng, const N: usize>(
         cache: HashMap::with_capacity(100 * cfg.games_per_train),
     };
 
-    buffer.keep_last_n_games(cfg.games_to_keep);
+    buffer.keep_last_n_games(cfg.games_to_keep - cfg.games_per_train);
     let bar = ProgressBar::new(cfg.games_per_train as u64);
     bar.set_style(
         ProgressStyle::default_bar()

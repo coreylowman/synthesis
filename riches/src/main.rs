@@ -10,10 +10,10 @@ fn run<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let train_cfg = TrainConfig {
         lr: 1e-3,
-        weight_decay: 1e-4,
+        weight_decay: 1e-5,
         num_iterations: 200,
-        num_epochs: 10,
-        batch_size: 2048,
+        num_epochs: 20,
+        batch_size: 128,
         seed: 0,
         logs: train_dir("./_logs", E::NAME)?,
     };
@@ -24,13 +24,16 @@ fn run<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
         games_per_train: 1500,
         num_explores: 800,
         sample_action_until: 25,
-        alpha: 1.0 / (N as f32),
+        alpha: 10.0 / (N as f32),
         noisy_explore: true,
         noise_weight: 0.25,
         c_puct: 2.0,
         solve: true,
         value_target: ValueTarget::Interpolate,
     };
+
+    tch::set_num_threads(2);
+    tch::set_num_interop_threads(2);
 
     let eval_train_cfg = train_cfg.clone();
     let eval_rollout_cfg = rollout_cfg.clone();
