@@ -17,6 +17,6 @@ impl<'a, E: Env<N>, R: Rng, const N: usize> Policy<E, N> for RolloutPolicy<'a, R
             let action = rollout_env.iter_actions().nth(i as usize).unwrap();
             is_over = rollout_env.step(&action);
         }
-        ([0.0; N], rollout_env.reward(player))
+        ([1.0 / (N as f32); N], rollout_env.reward(player))
     }
 }

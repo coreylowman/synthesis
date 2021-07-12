@@ -14,7 +14,7 @@ use std::collections::HashMap;
 pub enum ValueTarget {
     Z,                          // Outcome of game {-1, 0, 1}
     Q,                          // Avg Value found while searching
-    QZAverage,                  // (Q + Z) / 2
+    ZplusQover2,                // (Q + Z) / 2
     Interpolate,                // interpolate between Z and Q
     QForSamples,                // Q if action is sampled, Z if action is exploit
     InterpolateForSamples,      // Interp if action is sampled, Z if action is exploit
@@ -27,6 +27,7 @@ pub struct RolloutConfig {
     pub games_to_keep: usize,
     pub games_per_train: usize,
     pub num_explores: usize,
+    pub num_random_actions: usize,
     pub sample_action_until: usize,
     pub alpha: f32,
     pub noisy_explore: bool,
@@ -48,7 +49,7 @@ fn store_rewards<E: Env<N>, const N: usize>(
         buffer.vs[i] = match cfg.value_target {
             ValueTarget::Q => buffer.vs[i],
             ValueTarget::Z => r,
-            ValueTarget::QZAverage => (buffer.vs[i] + r) / 2.0,
+            ValueTarget::ZplusQover2 => (buffer.vs[i] + r) / 2.0,
             ValueTarget::Interpolate => {
                 let t = (turn + 1) as f32 / num_turns;
                 r * t + buffer.vs[i] * (1.0 - t)
@@ -78,6 +79,7 @@ fn store_rewards<E: Env<N>, const N: usize>(
             }
         };
 
+        // r = 1.0 - r;
         r = -r;
     }
 }
@@ -91,13 +93,26 @@ fn run_game<E: Env<N>, P: Policy<E, N>, R: Rng, const N: usize>(
     let mut game = E::new();
     let mut is_over = false;
     let mut search_policy = [0.0; N];
-    let mut num_turns = 0;
+    let mut num_turns = cfg.num_random_actions;
     let start_i = buffer.vs.len();
     let dirichlet = Dirichlet::new(&[cfg.alpha; N]).unwrap();
     let start_player = game.player();
 
+    // apply random actions at start
+    let mut num_randoms = 0;
+    while num_randoms < cfg.num_random_actions {
+        let n = rng.gen_range(0..game.iter_actions().count() as u8) as usize;
+        let action = game.iter_actions().nth(n).unwrap();
+        if game.step(&action) {
+            game = E::new();
+            num_randoms = 0;
+        } else {
+            num_randoms += 1;
+        }
+    }
+
     while !is_over {
-        let mut mcts = MCTS::<E, P, N>::with_capacity(
+        let mut mcts = MCTS::with_capacity(
             cfg.num_explores + 1,
             cfg.c_puct,
             cfg.solve,
@@ -143,7 +158,7 @@ fn run_vanilla_mcts_game<E: Env<N>, R: Rng, const N: usize>(
 
     while !is_over {
         let mut rollout_policy = RolloutPolicy { rng };
-        let mut mcts = MCTS::<E, RolloutPolicy<R>, N>::with_capacity(
+        let mut mcts = MCTS::with_capacity(
             cfg.num_explores + 1,
             cfg.c_puct,
             cfg.solve,
@@ -181,15 +196,13 @@ pub fn eval_against_random<E: Env<N>, P: Policy<E, N>, const N: usize>(
     let mut opponent = StdRng::seed_from_u64(0);
     loop {
         let action = if game.player() == player {
-            let mut mcts = MCTS::<E, P, N>::with_capacity(
-                cfg.num_explores + 1,
+            MCTS::exploit(
+                cfg.num_explores,
                 cfg.c_puct,
                 cfg.solve,
                 policy,
                 game.clone(),
-            );
-            mcts.explore_n(cfg.num_explores);
-            mcts.best_action()
+            )
         } else {
             let num_actions = game.iter_actions().count() as u8;
             let i = opponent.gen_range(0..num_actions) as usize;
@@ -216,25 +229,21 @@ pub fn eval_against_vanilla_mcts<E: Env<N>, P: Policy<E, N>, const N: usize>(
     let mut rollout_policy = RolloutPolicy { rng: &mut rng };
     loop {
         let action = if game.player() == player {
-            let mut mcts = MCTS::<E, P, N>::with_capacity(
-                cfg.num_explores + 1,
+            MCTS::exploit(
+                cfg.num_explores,
                 cfg.c_puct,
                 cfg.solve,
                 policy,
                 game.clone(),
-            );
-            mcts.explore_n(cfg.num_explores);
-            mcts.best_action()
+            )
         } else {
-            let mut mcts = MCTS::<E, RolloutPolicy<StdRng>, N>::with_capacity(
-                opponent_explores + 1,
+            MCTS::exploit(
+                opponent_explores,
                 cfg.c_puct,
                 cfg.solve,
                 &mut rollout_policy,
                 game.clone(),
-            );
-            mcts.explore_n(opponent_explores);
-            mcts.best_action()
+            )
         };
 
         if game.step(&action) {
@@ -256,20 +265,17 @@ pub fn mcts_vs_mcts<E: Env<N>, const N: usize>(
     let mut game = E::new();
     let first_player = game.player();
     loop {
-        let explores = if game.player() == player {
-            p1_explores
-        } else {
-            p2_explores
-        };
-        let mut mcts = MCTS::<E, RolloutPolicy<StdRng>, N>::with_capacity(
-            explores + 1,
+        let action = MCTS::exploit(
+            if game.player() == player {
+                p1_explores
+            } else {
+                p2_explores
+            },
             cfg.c_puct,
             cfg.solve,
             &mut rollout_policy,
             game.clone(),
         );
-        mcts.explore_n(explores);
-        let action = mcts.best_action();
         if game.step(&action) {
             break;
         }

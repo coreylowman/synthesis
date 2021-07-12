@@ -46,33 +46,22 @@ pub fn evaluator<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
     let all_explores = [100, 200, 400, 800, 1600, 3200, 6400, 12800];
 
     for i in 0..all_explores.len() {
-        for j in (i + 1)..all_explores.len() {
+        for j in 0..all_explores.len() {
+            if i == j {
+                continue;
+            }
             for seed in 0..10 {
-                let result = mcts_vs_mcts::<E, N>(
-                    &rollout_cfg,
-                    first_player,
-                    all_explores[i],
-                    all_explores[j],
-                    seed,
-                );
                 add_pgn_result(
                     &mut pgn,
                     &format!("VanillaMCTS{}", all_explores[i]),
                     &format!("VanillaMCTS{}", all_explores[j]),
-                    result,
-                )?;
-                let result = mcts_vs_mcts::<E, N>(
-                    &rollout_cfg,
-                    first_player,
-                    all_explores[j],
-                    all_explores[i],
-                    seed,
-                );
-                add_pgn_result(
-                    &mut pgn,
-                    &format!("VanillaMCTS{}", all_explores[j]),
-                    &format!("VanillaMCTS{}", all_explores[i]),
-                    result,
+                    mcts_vs_mcts::<E, N>(
+                        &rollout_cfg,
+                        first_player,
+                        all_explores[i],
+                        all_explores[j],
+                        seed,
+                    ),
                 )?;
             }
         }
@@ -103,6 +92,7 @@ pub fn evaluator<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
         add_pgn_result(&mut pgn, &String::from("Random"), &name, result)?;
 
         for &explores in &all_explores {
+            let op_name = format!("VanillaMCTS{}", explores);
             for seed in 0..10 {
                 let result = eval_against_vanilla_mcts(
                     &rollout_cfg,
@@ -111,7 +101,7 @@ pub fn evaluator<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
                     explores,
                     seed,
                 );
-                add_pgn_result(&mut pgn, &name, &format!("VanillaMCTS{}", explores), result)?;
+                add_pgn_result(&mut pgn, &name, &op_name, result)?;
                 let result = eval_against_vanilla_mcts(
                     &rollout_cfg,
                     &mut policy,
@@ -119,7 +109,7 @@ pub fn evaluator<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
                     explores,
                     seed,
                 );
-                add_pgn_result(&mut pgn, &format!("VanillaMCTS{}", explores), &name, result)?;
+                add_pgn_result(&mut pgn, &op_name, &name, result)?;
             }
         }
 
@@ -158,13 +148,13 @@ pub fn trainer<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
     vs.save(models_dir.join(String::from("model_0.ot")))?;
 
     let mut buffer = ReplayBuffer::<E, N>::new(rollout_cfg.buffer_size);
-    fill_buffer(rollout_cfg, &mut rng, &mut buffer);
+    // fill_buffer(rollout_cfg, &mut rng, &mut buffer);
 
     for i_iter in 0..train_cfg.num_iterations {
         // gather data
         {
             let _guard = tch::no_grad_guard();
-            gather_experience::<E, P, StdRng, N>(rollout_cfg, &mut policy, &mut rng, &mut buffer);
+            gather_experience(rollout_cfg, &mut policy, &mut rng, &mut buffer);
         }
 
         // convert to tensors
@@ -178,6 +168,8 @@ pub fn trainer<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
         let states = tensor(&buffer.states, &dims, Kind::Bool).to_kind(tch::Kind::Float);
         let target_pis = tensor(&buffer.pis, &[dims[0], N as i64], Kind::Float);
         let target_vs = tensor(&buffer.vs, &[dims[0], 1], Kind::Float);
+
+        let batch_mean = 1.0 / (train_cfg.batch_size as f32);
 
         // train
         for _i_epoch in 0..train_cfg.num_epochs {
@@ -193,21 +185,7 @@ pub fn trainer<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
                 assert_eq!(v.size(), target_v.size());
 
                 let log_pi = logits.log_softmax(-1, Kind::Float);
-                let zeros = tch::Tensor::zeros_like(&target_pi);
-                let illegal_values = -1e6 * tch::Tensor::ones_like(&target_pi);
-                // let legal_log_pi = log_pi.where1(&target_pi.greater1(&zeros), &zeros);
-
-                // let pi_loss = (-legal_log_pi * target_pi)
-                //     .sum1(&[-1], true, Kind::Float)
-                //     .mean(Kind::Float);
-                // let pi_loss = (legal_log_pi * -target_pi).mean(Kind::Float);
-                let pi_loss = log_pi.kl_div(
-                    &target_pi
-                        .log()
-                        .where1(&target_pi.greater1(&zeros), &illegal_values),
-                    tch::Reduction::Mean,
-                    true,
-                );
+                let pi_loss = batch_mean * log_pi.kl_div(&target_pi, tch::Reduction::Sum, false);
                 let v_loss = v.mse_loss(&target_v, tch::Reduction::Mean);
 
                 let loss = &pi_loss + &v_loss;

@@ -53,6 +53,7 @@ pub fn add_pgn_result(
         // black wins
         "0-1"
     } else {
+        assert_eq!(white_reward, 0.0);
         // draw
         "1/2-1/2"
     };
