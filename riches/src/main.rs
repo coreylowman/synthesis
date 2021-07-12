@@ -10,23 +10,29 @@ fn run<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let train_cfg = TrainConfig {
         lr: 1e-3,
-        weight_decay: 1e-5,
+        weight_decay: 0.0,
         num_iterations: 200,
         num_epochs: 20,
-        batch_size: 128,
+        batch_size: 64,
         seed: 0,
         logs: train_dir("./_logs", E::NAME)?,
     };
 
+    // TODO try 1600 explores and see if still stuck at 400
+    // TODO try noisy_explore with noise_weight of 0.0625
+    // TODO try c_puct 1.0
+    // TODO why does num_random_actions > 0 affect things so much?
+
     let rollout_cfg = RolloutConfig {
         buffer_size: 256_000,
-        games_to_keep: 7500,
-        games_per_train: 1500,
+        games_to_keep: 8000,
+        games_per_train: 2000,
         num_explores: 800,
+        num_random_actions: 0,
         sample_action_until: 25,
         alpha: 10.0 / (N as f32),
         noisy_explore: true,
-        noise_weight: 0.25,
+        noise_weight: 0.125,
         c_puct: 2.0,
         solve: true,
         value_target: ValueTarget::Interpolate,

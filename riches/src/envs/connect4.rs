@@ -147,7 +147,7 @@ impl Env<WIDTH> for Connect4 {
     type PlayerId = PlayerId;
     type Action = Column;
     type ActionIterator = FreeColumns;
-    type State = [[[bool; WIDTH]; HEIGHT]; 2];
+    type State = [[[bool; WIDTH]; HEIGHT]; 3];
 
     fn new() -> Self {
         Self {
@@ -235,11 +235,11 @@ impl Env<WIDTH> for Connect4 {
     }
 
     fn get_state_dims() -> Vec<i64> {
-        vec![1, 2, HEIGHT as i64, WIDTH as i64]
+        vec![1, 3, HEIGHT as i64, WIDTH as i64]
     }
 
     fn state(&self) -> Self::State {
-        let mut s = [[[false; WIDTH]; HEIGHT]; 2];
+        let mut s = [[[false; WIDTH]; HEIGHT]; 3];
         for row in 0..HEIGHT {
             for col in 0..WIDTH {
                 let index = 1 << (row + HEIGHT * col);
@@ -247,6 +247,8 @@ impl Env<WIDTH> for Connect4 {
                     s[0][row][col] = true;
                 } else if self.op_bb & index != 0 {
                     s[1][row][col] = true;
+                } else {
+                    s[2][row][col] = true;
                 }
             }
         }
@@ -291,6 +293,153 @@ impl Env<WIDTH> for Connect4 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_first_wins() {
+        let mut game = Connect4::new();
+        assert!(!game.step(&Column(0)));
+        assert!(!game.step(&Column(1)));
+        assert!(!game.step(&Column(0)));
+        assert!(!game.step(&Column(1)));
+        assert!(!game.step(&Column(0)));
+        assert!(!game.step(&Column(1)));
+        assert!(game.step(&Column(0)));
+        assert!(game.is_over());
+        assert_eq!(game.reward(game.player()), -1.0);
+        assert_eq!(game.player(), PlayerId::Black);
+        assert_eq!(game.reward(PlayerId::Black), -1.0);
+        assert_eq!(game.reward(PlayerId::Red), 1.0);
+    }
+
+    #[test]
+    fn test_second_wins() {
+        let mut game = Connect4::new();
+        assert!(!game.step(&Column(0)));
+        assert!(!game.step(&Column(1)));
+        assert!(!game.step(&Column(2)));
+        assert!(!game.step(&Column(1)));
+        assert!(!game.step(&Column(2)));
+        assert!(!game.step(&Column(1)));
+        assert!(!game.step(&Column(2)));
+        assert!(game.step(&Column(1)));
+        assert!(game.is_over());
+        assert_eq!(game.reward(game.player()), -1.0);
+        assert_eq!(game.player(), PlayerId::Red);
+        assert_eq!(game.reward(PlayerId::Black), 1.0);
+        assert_eq!(game.reward(PlayerId::Red), -1.0);
+    }
+
+    #[test]
+    fn test_draw() {
+        /*
+        +-------------------+
+        | r b r b r b r b r |
+        | r b r b r b r b b |
+        | r b r b r b r b r |
+        | b r b r b r b r b |
+        | b r b r b r b r r |
+        | r b r b r b r b b |
+        | r b r b r b r b r |
+        +-------------------+
+        */
+
+        let mut game = Connect4::new();
+        assert!(!game.step(&Column(0)));
+        assert!(!game.step(&Column(1)));
+        assert!(!game.step(&Column(0)));
+        assert!(!game.step(&Column(1)));
+        assert!(!game.step(&Column(1)));
+        assert!(!game.step(&Column(0)));
+        assert!(!game.step(&Column(1)));
+        assert!(!game.step(&Column(0)));
+        assert!(!game.step(&Column(0)));
+        assert!(!game.step(&Column(1)));
+        assert!(!game.step(&Column(0)));
+        assert!(!game.step(&Column(1)));
+
+        assert!(game.iter_actions().position(|c| c == Column(0)).is_some());
+        assert!(!game.step(&Column(0)));
+        assert!(game.iter_actions().position(|c| c == Column(0)).is_none());
+
+        assert!(game.iter_actions().position(|c| c == Column(1)).is_some());
+        assert!(!game.step(&Column(1)));
+        assert!(game.iter_actions().position(|c| c == Column(1)).is_none());
+
+        assert!(!game.step(&Column(2)));
+        assert!(!game.step(&Column(3)));
+        assert!(!game.step(&Column(2)));
+        assert!(!game.step(&Column(3)));
+        assert!(!game.step(&Column(3)));
+        assert!(!game.step(&Column(2)));
+        assert!(!game.step(&Column(3)));
+        assert!(!game.step(&Column(2)));
+        assert!(!game.step(&Column(2)));
+        assert!(!game.step(&Column(3)));
+        assert!(!game.step(&Column(2)));
+        assert!(!game.step(&Column(3)));
+
+        assert!(game.iter_actions().position(|c| c == Column(2)).is_some());
+        assert!(!game.step(&Column(2)));
+        assert!(game.iter_actions().position(|c| c == Column(2)).is_none());
+
+        assert!(game.iter_actions().position(|c| c == Column(3)).is_some());
+        assert!(!game.step(&Column(3)));
+        assert!(game.iter_actions().position(|c| c == Column(3)).is_none());
+
+        assert!(!game.step(&Column(4)));
+        assert!(!game.step(&Column(5)));
+        assert!(!game.step(&Column(4)));
+        assert!(!game.step(&Column(5)));
+        assert!(!game.step(&Column(5)));
+        assert!(!game.step(&Column(4)));
+        assert!(!game.step(&Column(5)));
+        assert!(!game.step(&Column(4)));
+        assert!(!game.step(&Column(4)));
+        assert!(!game.step(&Column(5)));
+        assert!(!game.step(&Column(4)));
+        assert!(!game.step(&Column(5)));
+
+        assert!(game.iter_actions().position(|c| c == Column(4)).is_some());
+        assert!(!game.step(&Column(4)));
+        assert!(game.iter_actions().position(|c| c == Column(4)).is_none());
+
+        assert!(game.iter_actions().position(|c| c == Column(5)).is_some());
+        assert!(!game.step(&Column(5)));
+        assert!(game.iter_actions().position(|c| c == Column(5)).is_none());
+
+        assert!(!game.step(&Column(6)));
+        assert!(!game.step(&Column(7)));
+        assert!(!game.step(&Column(6)));
+        assert!(!game.step(&Column(7)));
+        assert!(!game.step(&Column(7)));
+        assert!(!game.step(&Column(6)));
+        assert!(!game.step(&Column(7)));
+        assert!(!game.step(&Column(6)));
+        assert!(!game.step(&Column(6)));
+        assert!(!game.step(&Column(7)));
+        assert!(!game.step(&Column(6)));
+        assert!(!game.step(&Column(7)));
+
+        assert!(game.iter_actions().position(|c| c == Column(6)).is_some());
+        assert!(!game.step(&Column(6)));
+        assert!(game.iter_actions().position(|c| c == Column(6)).is_none());
+
+        assert!(game.iter_actions().position(|c| c == Column(7)).is_some());
+        assert!(!game.step(&Column(7)));
+        assert!(game.iter_actions().position(|c| c == Column(7)).is_none());
+
+        assert!(!game.step(&Column(8)));
+        assert!(!game.step(&Column(8)));
+        assert!(!game.step(&Column(8)));
+        assert!(!game.step(&Column(8)));
+        assert!(!game.step(&Column(8)));
+        assert!(!game.step(&Column(8)));
+        assert!(game.iter_actions().position(|c| c == Column(8)).is_some());
+        assert!(game.step(&Column(8)));
+        assert!(game.is_over());
+        assert_eq!(game.reward(PlayerId::Red), 0.0);
+        assert_eq!(game.reward(PlayerId::Black), 0.0);
+    }
 
     #[test]
     fn test_horz_wins() {
