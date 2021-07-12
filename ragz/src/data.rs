@@ -167,10 +167,11 @@ impl<E: Env<N>, const N: usize> ReplayBuffer<E, N> {
             max_ind_to_remove = Some(i);
         }
         if let Some(max_ind) = max_ind_to_remove {
-            drop(self.game_ids.drain(0..max_ind));
-            drop(self.states.drain(0..max_ind));
-            drop(self.pis.drain(0..max_ind));
-            drop(self.vs.drain(0..max_ind));
+            drop(self.game_ids.drain(0..=max_ind));
+            drop(self.states.drain(0..=max_ind));
+            drop(self.pis.drain(0..=max_ind));
+            drop(self.vs.drain(0..=max_ind));
+            assert!(self.game_ids[0] >= min_game_id);
         }
     }
 
