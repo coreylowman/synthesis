@@ -6,7 +6,6 @@ use indicatif::{ProgressBar, ProgressStyle};
 use rand::prelude::StdRng;
 use rand::SeedableRng;
 use rand::{distributions::Distribution, distributions::WeightedIndex, Rng};
-use rand_distr::Dirichlet;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -34,6 +33,7 @@ pub struct RolloutConfig {
     pub noise_weight: f32,
     pub c_puct: f32,
     pub solve: bool,
+    pub fpu: f32,
     pub value_target: ValueTarget,
 }
 
@@ -78,8 +78,6 @@ fn store_rewards<E: Env<N>, const N: usize>(
                 }
             }
         };
-
-        // r = 1.0 - r;
         r = -r;
     }
 }
@@ -95,33 +93,20 @@ fn run_game<E: Env<N>, P: Policy<E, N>, R: Rng, const N: usize>(
     let mut search_policy = [0.0; N];
     let mut num_turns = cfg.num_random_actions;
     let start_i = buffer.vs.len();
-    let dirichlet = Dirichlet::new(&[cfg.alpha; N]).unwrap();
     let start_player = game.player();
-
-    // apply random actions at start
-    let mut num_randoms = 0;
-    while num_randoms < cfg.num_random_actions {
-        let n = rng.gen_range(0..game.iter_actions().count() as u8) as usize;
-        let action = game.iter_actions().nth(n).unwrap();
-        if game.step(&action) {
-            game = E::new();
-            num_randoms = 0;
-        } else {
-            num_randoms += 1;
-        }
-    }
 
     while !is_over {
         let mut mcts = MCTS::with_capacity(
             cfg.num_explores + 1,
             cfg.c_puct,
             cfg.solve,
+            cfg.fpu,
             policy,
             game.clone(),
         );
 
         if cfg.noisy_explore {
-            mcts.add_noise(&dirichlet.sample(rng), cfg.noise_weight);
+            mcts.add_dirichlet_noise(rng, cfg.alpha, cfg.noise_weight);
         }
 
         mcts.explore_n(cfg.num_explores);
@@ -129,49 +114,17 @@ fn run_game<E: Env<N>, P: Policy<E, N>, R: Rng, const N: usize>(
         let best = mcts.best_action();
         buffer.add(&game.state(), &search_policy, mcts.extract_q());
 
-        let action = if num_turns < cfg.sample_action_until && mcts.outcome(&best).is_none() {
-            let dist = WeightedIndex::new(&search_policy).unwrap();
-            let choice = dist.sample(rng);
-            E::Action::from(choice)
-        } else {
-            best
-        };
+        // assert!(
+        //     search_policy[best.into()] > 0.0,
+        //     "{:?} | {:?}",
+        //     best,
+        //     search_policy
+        // );
 
-        is_over = game.step(&action);
-        num_turns += 1;
-    }
-
-    store_rewards(cfg, buffer, start_i, game.reward(start_player));
-}
-
-fn run_vanilla_mcts_game<E: Env<N>, R: Rng, const N: usize>(
-    cfg: &RolloutConfig,
-    rng: &mut R,
-    buffer: &mut ReplayBuffer<E, N>,
-) {
-    let mut game = E::new();
-    let mut is_over = false;
-    let mut num_turns = 0;
-    let mut search_policy = [0.0; N];
-    let start_i = buffer.vs.len();
-    let start_player = game.player();
-
-    while !is_over {
-        let mut rollout_policy = RolloutPolicy { rng };
-        let mut mcts = MCTS::with_capacity(
-            cfg.num_explores + 1,
-            cfg.c_puct,
-            cfg.solve,
-            &mut rollout_policy,
-            game.clone(),
-        );
-
-        mcts.explore_n(cfg.num_explores);
-        mcts.extract_search_policy(&mut search_policy);
-        let best = mcts.best_action();
-        buffer.add(&game.state(), &search_policy, mcts.extract_q());
-
-        let action = if num_turns < cfg.sample_action_until && mcts.outcome(&best).is_none() {
+        let action = if num_turns < cfg.num_random_actions {
+            let n = rng.gen_range(0..game.iter_actions().count() as u8) as usize;
+            game.iter_actions().nth(n).unwrap()
+        } else if num_turns < cfg.sample_action_until && mcts.solution(&best).is_none() {
             let dist = WeightedIndex::new(&search_policy).unwrap();
             let choice = dist.sample(rng);
             E::Action::from(choice)
@@ -200,6 +153,7 @@ pub fn eval_against_random<E: Env<N>, P: Policy<E, N>, const N: usize>(
                 cfg.num_explores,
                 cfg.c_puct,
                 cfg.solve,
+                cfg.fpu,
                 policy,
                 game.clone(),
             )
@@ -233,6 +187,7 @@ pub fn eval_against_vanilla_mcts<E: Env<N>, P: Policy<E, N>, const N: usize>(
                 cfg.num_explores,
                 cfg.c_puct,
                 cfg.solve,
+                cfg.fpu,
                 policy,
                 game.clone(),
             )
@@ -241,6 +196,7 @@ pub fn eval_against_vanilla_mcts<E: Env<N>, P: Policy<E, N>, const N: usize>(
                 opponent_explores,
                 cfg.c_puct,
                 cfg.solve,
+                cfg.fpu,
                 &mut rollout_policy,
                 game.clone(),
             )
@@ -273,6 +229,7 @@ pub fn mcts_vs_mcts<E: Env<N>, const N: usize>(
             },
             cfg.c_puct,
             cfg.solve,
+            cfg.fpu,
             &mut rollout_policy,
             game.clone(),
         );
@@ -304,26 +261,6 @@ pub fn gather_experience<E: Env<N>, P: Policy<E, N>, R: Rng, const N: usize>(
     for _ in 0..cfg.games_per_train {
         buffer.new_game();
         run_game(cfg, &mut cached_policy, rng, buffer);
-        bar.inc(1);
-    }
-    bar.finish();
-}
-
-pub fn fill_buffer<E: Env<N>, R: Rng, const N: usize>(
-    cfg: &RolloutConfig,
-    rng: &mut R,
-    buffer: &mut ReplayBuffer<E, N>,
-) {
-    let target = cfg.games_to_keep - cfg.games_per_train;
-    let bar = ProgressBar::new(target as u64);
-    bar.set_style(
-        ProgressStyle::default_bar()
-            .template("[{bar:40}] {percent}% {pos}/{len} {per_sec} {elapsed_precise}")
-            .progress_chars("|| "),
-    );
-    for _ in 0..target {
-        buffer.new_game();
-        run_vanilla_mcts_game(cfg, rng, buffer);
         bar.inc(1);
     }
     bar.finish();

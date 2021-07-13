@@ -28,13 +28,14 @@ fn run<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
         games_to_keep: 8000,
         games_per_train: 2000,
         num_explores: 800,
-        num_random_actions: 0,
+        num_random_actions: 1,
         sample_action_until: 25,
         alpha: 10.0 / (N as f32),
         noisy_explore: true,
-        noise_weight: 0.125,
-        c_puct: 2.0,
+        noise_weight: 0.25,
+        c_puct: 1.0,
         solve: true,
+        fpu: f32::INFINITY,
         value_target: ValueTarget::Interpolate,
     };
 

@@ -147,8 +147,7 @@ pub fn trainer<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
 
     vs.save(models_dir.join(String::from("model_0.ot")))?;
 
-    let mut buffer = ReplayBuffer::<E, N>::new(rollout_cfg.buffer_size);
-    // fill_buffer(rollout_cfg, &mut rng, &mut buffer);
+    let mut buffer = ReplayBuffer::new(rollout_cfg.buffer_size);
 
     for i_iter in 0..train_cfg.num_iterations {
         // gather data

@@ -1,45 +1,76 @@
 use crate::env::{Env, Outcome};
 use crate::policies::Policy;
+use rand::{distributions::Distribution, Rng};
+use rand_distr::Dirichlet;
 
 type NodeId = u32;
+type ActionId = u8;
 
 struct Node<E: Env<N>, const N: usize> {
-    parent: NodeId,
-    env: E,
-    terminal: bool,
-    expanded: bool,
-    outcome: Option<Outcome>,
-    action_probs: [f32; N],
-    value: f32,
-    actions: E::ActionIterator,
-    children: Vec<(E::Action, NodeId)>,
-    cum_value: f32,
-    num_visits: f32,
+    parent: NodeId,            // 4 bytes
+    first_child: NodeId,       // 4 bytes
+    num_children: u8,          // 1 byte
+    env: E,                    // ? bytes
+    is_over: bool,             // 1 byte
+    solution: Option<Outcome>, // 1 byte
+    action: ActionId,          // 1 byte
+    action_prob: f32,          // 4 bytes
+    cum_value: f32,            // 4 bytes
+    num_visits: f32,           // 4 bytes
 }
 
 impl<E: Env<N>, const N: usize> Node<E, N> {
-    fn new(
+    fn unvisited(
         parent: NodeId,
         env: E,
         is_over: bool,
-        outcome: Option<Outcome>,
-        action_probs: [f32; N],
-        value: f32,
+        solution: Option<Outcome>,
+        action: u8,
+        action_prob: f32,
     ) -> Self {
-        let actions = env.iter_actions();
-        Node {
+        Self {
             parent,
+            first_child: 0,
+            num_children: 0,
             env,
-            terminal: is_over,
-            expanded: is_over,
-            outcome,
-            action_probs,
-            value,
-            actions,
-            children: Vec::new(),
-            cum_value: value,
-            num_visits: 1.0,
+            action,
+            is_over,
+            solution,
+            action_prob,
+            cum_value: 0.0,
+            num_visits: 0.0,
         }
+    }
+
+    #[inline]
+    fn is_unvisited(&self) -> bool {
+        self.num_children == 0 && !self.is_over
+    }
+
+    #[inline]
+    fn is_visited(&self) -> bool {
+        self.num_children != 0
+    }
+
+    #[inline]
+    fn is_unsolved(&self) -> bool {
+        self.solution.is_none()
+    }
+
+    #[inline]
+    fn last_child(&self) -> NodeId {
+        self.first_child + self.num_children as u32
+    }
+
+    #[inline]
+    fn mark_visited(&mut self, first_child: NodeId, num_children: u8) {
+        self.first_child = first_child;
+        self.num_children = num_children;
+    }
+
+    #[inline]
+    fn mark_solved(&mut self, outcome: Outcome) {
+        self.solution = Some(outcome);
     }
 }
 
@@ -50,6 +81,7 @@ pub struct MCTS<'a, E: Env<N>, P: Policy<E, N>, const N: usize> {
     policy: &'a mut P,
     c_puct: f32,
     solve: bool,
+    fpu: f32,
 }
 
 impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
@@ -57,10 +89,11 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
         explores: usize,
         c_puct: f32,
         solve: bool,
+        fpu: f32,
         policy: &'a mut P,
         env: E,
     ) -> E::Action {
-        let mut mcts = Self::with_capacity(explores + 1, c_puct, solve, policy, env);
+        let mut mcts = Self::with_capacity(explores + 1, c_puct, solve, fpu, policy, env);
         mcts.explore_n(explores);
         mcts.best_action()
     }
@@ -69,23 +102,24 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
         capacity: usize,
         c_puct: f32,
         solve: bool,
+        fpu: f32,
         policy: &'a mut P,
         env: E,
     ) -> Self {
-        let (action_probs, value) = policy.eval(&env);
-        let root = Node::new(0, env, false, None, action_probs, value);
-
         let mut nodes = Vec::with_capacity(capacity);
-        nodes.push(root);
-
-        Self {
+        nodes.push(Node::unvisited(0, env, false, None, 0, 0.0));
+        let mut mcts = Self {
             root: 0,
             offset: 0,
             nodes,
             policy,
             c_puct,
             solve,
-        }
+            fpu,
+        };
+        let (value, any_solved) = mcts.visit(mcts.root);
+        mcts.backprop(mcts.root, value, any_solved);
+        mcts
     }
 
     fn next_node_id(&self) -> NodeId {
@@ -100,91 +134,62 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
         &mut self.nodes[(node_id - self.offset) as usize]
     }
 
-    pub fn outcome(&self, action: &E::Action) -> Option<Outcome> {
+    fn children_of(&self, node: &Node<E, N>) -> &[Node<E, N>] {
+        &self.nodes[(node.first_child - self.offset) as usize
+            ..(node.first_child + node.num_children as u32 - self.offset) as usize]
+    }
+
+    fn mut_nodes(&mut self, first_child: NodeId, last_child: NodeId) -> &mut [Node<E, N>] {
+        &mut self.nodes[(first_child - self.offset) as usize..(last_child - self.offset) as usize]
+    }
+
+    pub fn solution(&self, action: &E::Action) -> Option<Outcome> {
+        let action: usize = (*action).into();
+        let action = action as u8;
         let root = self.node(self.root);
-        let child_ind = root
-            .children
-            .iter()
-            .position(|(a, _child_id)| a == action)
-            .unwrap();
-        let child = self.node(root.children[child_ind].1);
-        child.outcome
+        for child in self.children_of(root) {
+            if child.action == action {
+                return child.solution;
+            }
+        }
+        None
     }
 
     pub fn extract_search_policy(&self, search_policy: &mut [f32; N]) {
         search_policy.fill(0.0);
         let root = self.node(self.root);
         let mut total = 0.0;
-        let mut any_solved = false;
-        let mut any_won = false;
-        let mut any_draw = false;
-        let mut all_lost = true;
-        for &(_action, child_id) in root.children.iter() {
-            let child = self.node(child_id);
-            match child.outcome {
-                Some(outcome) => {
-                    any_solved = true;
-                    match outcome {
-                        Outcome::Win => {}
-                        Outcome::Draw => {
-                            all_lost = false;
-                            any_draw = true;
-                        }
-                        Outcome::Lose => {
-                            all_lost = false;
-                            any_won = true;
-                        }
-                    }
-                }
-                None => {
-                    all_lost = false;
-                }
+        let mut any_wins = false;
+        let mut any_draws = false;
+        let mut any_unsolved = false;
+        for child in self.children_of(root) {
+            match child.solution {
+                Some(Outcome::Win) => {}
+                Some(Outcome::Draw) => any_draws = true,
+                Some(Outcome::Lose) => any_wins = true,
+                None => any_unsolved = true,
             }
         }
-        if any_solved && any_won {
-            for &(action, child_id) in root.children.iter() {
-                let child = self.node(child_id);
-                let value = match child.outcome {
-                    Some(Outcome::Lose) => 1.0,
-                    _ => 0.0,
-                };
-                search_policy[action.into()] = value;
-                total += value;
-            }
-        } else if any_solved && any_draw {
-            for &(action, child_id) in root.children.iter() {
-                let child = self.node(child_id);
-                let value = match child.outcome {
-                    Some(Outcome::Draw) => 1.0,
-                    _ => 0.0,
-                };
-                search_policy[action.into()] = value;
-                total += value;
-            }
-        } else if any_solved && all_lost {
-            for &(action, _child_id) in root.children.iter() {
-                search_policy[action.into()] = 1.0;
-                total += 1.0;
-            }
-        } else if any_solved && !any_won && !any_draw {
-            // some lost, some unsolved
-            for &(action, child_id) in root.children.iter() {
-                let child = self.node(child_id);
-                let value = match child.outcome {
-                    Some(Outcome::Win) => 0.0,
-                    Some(Outcome::Draw) => panic!(),
-                    Some(Outcome::Lose) => panic!(),
-                    _ => child.num_visits,
-                };
-                search_policy[action.into()] = value;
-                total += value;
-            }
+        let (win_value, draw_value, lose_value, unsolved_mask) = if any_wins {
+            (1.0, 0.0, 0.0, 0.0)
+        } else if any_draws {
+            (0.0, 1.0, 0.0, 0.0)
+        } else if !any_unsolved {
+            // all losses
+            (0.0, 0.0, 1.0, 0.0)
         } else {
-            for &(action, child_id) in root.children.iter() {
-                let child = self.node(child_id);
-                search_policy[action.into()] = child.num_visits;
-                total += child.num_visits;
-            }
+            // some lost, some unsolved OR none solved
+            (0.0, 0.0, 0.0, 1.0)
+        };
+        for child in self.children_of(root) {
+            let value = match child.solution {
+                Some(Outcome::Lose) => win_value,
+                Some(Outcome::Draw) => draw_value,
+                Some(Outcome::Win) => lose_value,
+                None => unsolved_mask * child.num_visits,
+            };
+            search_policy[child.action as usize] = value;
+            total += value;
         }
         for i in 0..N {
             search_policy[i] /= total;
@@ -196,11 +201,21 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
         root.cum_value / root.num_visits
     }
 
-    pub fn add_noise(&mut self, noise: &Vec<f32>, noise_weight: f32) {
-        let root = self.mut_node(self.root);
-        for i in 0..N {
-            root.action_probs[i] =
-                (1.0 - noise_weight) * root.action_probs[i] + noise_weight * noise[i];
+    pub fn add_dirichlet_noise<R: Rng>(&mut self, rng: &mut R, alpha: f32, noise_weight: f32) {
+        let (first_child, last_child, num_children) = {
+            let root = self.node(self.root);
+            (root.first_child, root.last_child(), root.num_children)
+        };
+        if num_children < 2 {
+            return;
+        }
+        let dirichlet = Dirichlet::new_with_size(alpha, num_children as usize).unwrap();
+        let noise_probs = dirichlet.sample(rng);
+        for (noise, child) in noise_probs
+            .iter()
+            .zip(self.mut_nodes(first_child, last_child))
+        {
+            child.action_prob = child.action_prob * (1.0 - noise_weight) + noise_weight * noise;
         }
     }
 
@@ -209,9 +224,11 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
 
         let mut best_action = None;
         let mut best_value = f32::NEG_INFINITY;
-        for &(action, child_id) in root.children.iter() {
-            let child = self.node(child_id);
-            let value = match child.outcome {
+        for child in self.children_of(root) {
+            if child.is_unvisited() {
+                continue;
+            }
+            let value = match child.solution {
                 Some(Outcome::Win) => f32::NEG_INFINITY,
                 Some(Outcome::Draw) => 1e6,
                 Some(Outcome::Lose) => f32::INFINITY,
@@ -219,52 +236,29 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
             };
             if best_action.is_none() || value > best_value {
                 best_value = value;
-                best_action = Some(action);
+                best_action = Some((child.action as usize).into());
             }
         }
         best_action.unwrap()
     }
 
     fn explore(&mut self) {
-        let child_id = self.next_node_id();
         let mut node_id = self.root;
         loop {
             let node = self.mut_node(node_id);
-            if node.terminal {
-                let v = node.value;
+            if node.is_over {
+                let v = node.env.reward(node.env.player());
                 self.backprop(node_id, v, true);
                 return;
-            } else if let Some(outcome) = node.outcome {
+            } else if let Some(outcome) = node.solution {
                 self.backprop(node_id, outcome.value(), true);
                 return;
-            } else if node.expanded {
-                node_id = self.select_best_child(node_id);
+            } else if node.is_unvisited() {
+                let (value, any_solved) = self.visit(node_id);
+                self.backprop(node_id, value, any_solved);
+                return;
             } else {
-                match node.actions.next() {
-                    Some(action) => {
-                        // add to children
-                        node.children.push((action, child_id));
-
-                        // create the child node... note we will be modifying num_visits and reward later, so mutable
-                        let mut env = node.env.clone();
-                        let is_over = env.step(&action);
-                        let (logits, value, outcome) = if is_over {
-                            let r = env.reward(env.player());
-                            ([0.0; N], r, Some(r.into()))
-                        } else {
-                            let (logits, value) = self.policy.eval(&env);
-                            (logits, value, None)
-                        };
-                        let child = Node::new(node_id, env, is_over, outcome, logits, value);
-                        self.nodes.push(child);
-                        self.backprop(node_id, -value, is_over);
-                        return;
-                    }
-                    None => {
-                        node.expanded = true;
-                        node_id = self.select_best_child(node_id);
-                    }
-                }
+                node_id = self.select_best_child(node_id);
             }
         }
     }
@@ -274,25 +268,65 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
 
         let visits = node.num_visits.sqrt();
 
-        let mut best_child_id = None;
+        let mut best_child_id = 0;
         let mut best_value = f32::NEG_INFINITY;
-        for &(action, child_id) in node.children.iter() {
+        for child_ind in 0..node.num_children {
+            let child_id = node.first_child + child_ind as u32;
             let child = self.node(child_id);
-            // NOTE: -child.cum_value because child.cum_value is in opponent's win pct, so we want to convert to ours
-            let value = match child.outcome {
-                Some(outcome) => outcome.reversed().value(),
-                None => {
-                    let q = -child.cum_value / child.num_visits;
-                    let u = node.action_probs[action.into()] * visits / (1.0 + child.num_visits);
-                    q + self.c_puct * u
+            let value = if child.is_unvisited() {
+                self.fpu
+            } else {
+                match child.solution {
+                    Some(outcome) => outcome.reversed().value(),
+                    None => {
+                        let q = -child.cum_value / child.num_visits;
+                        let u = child.action_prob * visits / (1.0 + child.num_visits);
+                        q + self.c_puct * u
+                    }
                 }
             };
-            if best_child_id.is_none() || value > best_value {
-                best_child_id = Some(child_id);
+            if value > best_value {
+                best_child_id = child_id;
                 best_value = value;
             }
         }
-        best_child_id.unwrap()
+        best_child_id
+    }
+
+    fn visit(&mut self, node_id: NodeId) -> (f32, bool) {
+        let first_child = self.next_node_id();
+        let node = self.node(node_id);
+        let env = node.env.clone();
+        let (logits, value) = self.policy.eval(&env);
+        let mut num_children = 0;
+        let mut any_solved = false;
+        let mut total = 0.0;
+        for action in env.iter_actions() {
+            let mut child_env = env.clone();
+            let is_over = child_env.step(&action);
+            let solution = if is_over {
+                any_solved = true;
+                Some(child_env.reward(child_env.player()).into())
+            } else {
+                None
+            };
+            let action: usize = action.into();
+            let logit = logits[action].exp();
+            let child = Node::unvisited(node_id, child_env, is_over, solution, action as u8, logit);
+            self.nodes.push(child);
+            total += logit;
+            num_children += 1;
+        }
+
+        let node = self.mut_node(node_id);
+        node.mark_visited(first_child, num_children);
+        let first_child = node.first_child;
+        let last_child = node.last_child();
+        for child in self.mut_nodes(first_child, last_child) {
+            child.action_prob /= total;
+        }
+
+        (value, any_solved)
     }
 
     fn backprop(&mut self, leaf_node_id: NodeId, mut value: f32, mut solved: bool) {
@@ -301,27 +335,26 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
             let node = self.node(node_id);
             let parent = node.parent;
 
-            if self.solve && solved && node.outcome.is_none() {
+            if self.solve && solved && node.is_unsolved() {
                 let mut all_solved = true;
-                let mut worst_child_outcome = None;
-                for &(_action, child_id) in node.children.iter() {
-                    let child = self.node(child_id);
-                    if child.outcome.is_none() {
+                let mut worst_solution = None;
+                for child in self.children_of(node) {
+                    if child.is_unvisited() || child.is_unsolved() {
                         all_solved = false;
-                    } else if worst_child_outcome.is_none() || child.outcome < worst_child_outcome {
-                        worst_child_outcome = child.outcome;
+                    } else if worst_solution.is_none() || child.solution < worst_solution {
+                        worst_solution = child.solution;
                     }
                 }
 
                 let node = self.mut_node(node_id);
-                if worst_child_outcome == Some(Outcome::Lose) {
+                if worst_solution == Some(Outcome::Lose) {
                     // at least 1 is a win, so mark this node as a win
-                    node.outcome = Some(Outcome::Win);
+                    node.mark_solved(Outcome::Win);
                     value = -node.cum_value + (node.num_visits + 1.0);
-                } else if node.expanded && all_solved {
+                } else if node.is_visited() && all_solved {
                     // all children node's are proven losses or draws
-                    let best_for_me = worst_child_outcome.unwrap().reversed();
-                    node.outcome = Some(best_for_me);
+                    let best_for_me = worst_solution.unwrap().reversed();
+                    node.mark_solved(best_for_me);
                     if best_for_me == Outcome::Draw {
                         value = -node.cum_value;
                     } else {
@@ -562,18 +595,30 @@ mod tests {
         let mut game = TicTacToe::new();
         game.step(&Action { row: 0, col: 0 });
         game.step(&Action { row: 0, col: 2 });
-        let mut mcts = MCTS::with_capacity(1601, 2.0, true, &mut policy, game.clone());
-        while mcts.node(mcts.root).outcome.is_none() {
+        let mut mcts =
+            MCTS::with_capacity(1601, 2.0, true, f32::INFINITY, &mut policy, game.clone());
+        while mcts.node(mcts.root).solution.is_none() {
             mcts.explore();
         }
         let mut search_policy = [0.0; 9];
         mcts.extract_search_policy(&mut search_policy);
-        assert_eq!(mcts.node(mcts.root).outcome, Some(Outcome::Win));
+        assert_eq!(mcts.node(mcts.root).solution, Some(Outcome::Win));
         assert_eq!(
             &search_policy,
             &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0]
         );
+        assert_eq!(mcts.solution(&0.into()), None);
+        assert_eq!(mcts.solution(&1.into()), None);
+        assert_eq!(mcts.solution(&2.into()), None);
+        assert_eq!(mcts.solution(&3.into()), None);
+        assert_eq!(mcts.solution(&4.into()), None);
+        assert_eq!(mcts.solution(&5.into()), None);
+        assert_eq!(mcts.solution(&6.into()), Some(Outcome::Lose));
+        assert_eq!(mcts.solution(&7.into()), None);
+        assert_eq!(mcts.solution(&8.into()), None);
         assert_eq!(mcts.extract_q(), 1.0);
+        assert_eq!(mcts.best_action(), 6.into());
+        assert_eq!(mcts.nodes.len(), 311);
     }
 
     #[test]
@@ -584,11 +629,12 @@ mod tests {
         game.step(&Action { row: 0, col: 0 });
         game.step(&Action { row: 0, col: 2 });
         game.step(&Action { row: 2, col: 0 });
-        let mut mcts = MCTS::with_capacity(1601, 2.0, true, &mut policy, game.clone());
-        while mcts.node(mcts.root).outcome.is_none() {
+        let mut mcts =
+            MCTS::with_capacity(1601, 2.0, true, f32::INFINITY, &mut policy, game.clone());
+        while mcts.node(mcts.root).solution.is_none() {
             mcts.explore();
         }
-        assert_eq!(mcts.node(mcts.root).outcome, Some(Outcome::Lose));
+        assert_eq!(mcts.node(mcts.root).solution, Some(Outcome::Lose));
         let mut search_policy = [0.0; 9];
         mcts.extract_search_policy(&mut search_policy);
         assert_eq!(
@@ -598,7 +644,18 @@ mod tests {
                 0.16666667
             ]
         );
+        assert_eq!(mcts.solution(&0.into()), None);
+        assert_eq!(mcts.solution(&1.into()), Some(Outcome::Win));
+        assert_eq!(mcts.solution(&2.into()), None);
+        assert_eq!(mcts.solution(&3.into()), Some(Outcome::Win));
+        assert_eq!(mcts.solution(&4.into()), Some(Outcome::Win));
+        assert_eq!(mcts.solution(&5.into()), Some(Outcome::Win));
+        assert_eq!(mcts.solution(&6.into()), None);
+        assert_eq!(mcts.solution(&7.into()), Some(Outcome::Win));
+        assert_eq!(mcts.solution(&8.into()), Some(Outcome::Win));
         assert_eq!(mcts.extract_q(), -1.0);
+        assert_eq!(mcts.best_action(), 1.into());
+        assert_eq!(mcts.nodes.len(), 69);
     }
 
     #[test]
@@ -608,12 +665,13 @@ mod tests {
         let mut game = TicTacToe::new();
         game.step(&Action { row: 0, col: 0 });
         game.step(&Action { row: 1, col: 1 });
-        let mut mcts = MCTS::with_capacity(1601, 2.0, true, &mut policy, game.clone());
-        while mcts.node(mcts.root).outcome.is_none() {
+        let mut mcts =
+            MCTS::with_capacity(1601, 2.0, true, f32::INFINITY, &mut policy, game.clone());
+        while mcts.node(mcts.root).solution.is_none() {
             mcts.explore();
         }
 
-        assert_eq!(mcts.node(mcts.root).outcome, Some(Outcome::Draw));
+        assert_eq!(mcts.node(mcts.root).solution, Some(Outcome::Draw));
         let mut search_policy = [0.0; 9];
         mcts.extract_search_policy(&mut search_policy);
         assert_eq!(
@@ -623,6 +681,42 @@ mod tests {
                 0.14285715
             ]
         );
+        assert_eq!(mcts.solution(&0.into()), None);
+        assert_eq!(mcts.solution(&1.into()), Some(Outcome::Draw));
+        assert_eq!(mcts.solution(&2.into()), Some(Outcome::Draw));
+        assert_eq!(mcts.solution(&3.into()), Some(Outcome::Draw));
+        assert_eq!(mcts.solution(&4.into()), None);
+        assert_eq!(mcts.solution(&5.into()), Some(Outcome::Draw));
+        assert_eq!(mcts.solution(&6.into()), Some(Outcome::Draw));
+        assert_eq!(mcts.solution(&7.into()), Some(Outcome::Draw));
+        assert_eq!(mcts.solution(&8.into()), Some(Outcome::Draw));
         assert_eq!(mcts.extract_q(), 0.0);
+        assert_eq!(mcts.best_action(), 1.into());
+        assert_eq!(mcts.nodes.len(), 1533);
+    }
+
+    #[test]
+    fn test_add_noise() {
+        let mut rng = StdRng::seed_from_u64(0);
+        let mut policy = RolloutPolicy { rng: &mut rng };
+        let game = TicTacToe::new();
+        let mut mcts =
+            MCTS::with_capacity(1601, 2.0, true, f32::INFINITY, &mut policy, game.clone());
+        let mut rng2 = StdRng::seed_from_u64(0);
+
+        let mut total = 0.0;
+        for child in mcts.children_of(mcts.node(mcts.root)) {
+            assert!(child.action_prob > 0.0);
+            total += child.action_prob;
+        }
+        assert!((total - 1.0).abs() < 1e-6);
+
+        mcts.add_dirichlet_noise(&mut rng2, 1.0, 0.25);
+        let mut total = 0.0;
+        for child in mcts.children_of(mcts.node(mcts.root)) {
+            assert!(child.action_prob > 0.0);
+            total += child.action_prob;
+        }
+        assert!((total - 1.0).abs() < 1e-6);
     }
 }
