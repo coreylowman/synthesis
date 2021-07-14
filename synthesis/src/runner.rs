@@ -1,3 +1,4 @@
+use crate::config::{LearningConfig, ValueTarget};
 use crate::data::ReplayBuffer;
 use crate::game::Game;
 use crate::mcts::MCTS;
@@ -6,39 +7,10 @@ use indicatif::{ProgressBar, ProgressStyle};
 use rand::prelude::StdRng;
 use rand::SeedableRng;
 use rand::{distributions::Distribution, distributions::WeightedIndex, Rng};
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum ValueTarget {
-    Z,                          // Outcome of game {-1, 0, 1}
-    Q,                          // Avg Value found while searching
-    ZplusQover2,                // (Q + Z) / 2
-    Interpolate,                // interpolate between Z and Q
-    QForSamples,                // Q if action is sampled, Z if action is exploit
-    InterpolateForSamples,      // Interp if action is sampled, Z if action is exploit
-    SteepInterpolateForSamples, // Interp to end of sampling if action is sampled, Z if action is exploit
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct RolloutConfig {
-    pub buffer_size: usize,
-    pub games_to_keep: usize,
-    pub games_per_train: usize,
-    pub num_explores: usize,
-    pub num_random_actions: usize,
-    pub sample_action_until: usize,
-    pub alpha: f32,
-    pub noisy_explore: bool,
-    pub noise_weight: f32,
-    pub c_puct: f32,
-    pub solve: bool,
-    pub fpu: f32,
-    pub value_target: ValueTarget,
-}
-
 fn store_rewards<G: Game<N>, const N: usize>(
-    cfg: &RolloutConfig,
+    cfg: &LearningConfig,
     buffer: &mut ReplayBuffer<G, N>,
     start_i: usize,
     mut r: f32,
@@ -83,7 +55,7 @@ fn store_rewards<G: Game<N>, const N: usize>(
 }
 
 fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
-    cfg: &RolloutConfig,
+    cfg: &LearningConfig,
     policy: &mut P,
     rng: &mut R,
     buffer: &mut ReplayBuffer<G, N>,
@@ -140,7 +112,7 @@ fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
 }
 
 pub fn eval_against_random<G: Game<N>, P: Policy<G, N>, const N: usize>(
-    cfg: &RolloutConfig,
+    cfg: &LearningConfig,
     policy: &mut P,
     player: G::PlayerId,
 ) -> f32 {
@@ -171,7 +143,7 @@ pub fn eval_against_random<G: Game<N>, P: Policy<G, N>, const N: usize>(
 }
 
 pub fn eval_against_vanilla_mcts<G: Game<N>, P: Policy<G, N>, const N: usize>(
-    cfg: &RolloutConfig,
+    cfg: &LearningConfig,
     policy: &mut P,
     player: G::PlayerId,
     opponent_explores: usize,
@@ -210,7 +182,7 @@ pub fn eval_against_vanilla_mcts<G: Game<N>, P: Policy<G, N>, const N: usize>(
 }
 
 pub fn mcts_vs_mcts<G: Game<N>, const N: usize>(
-    cfg: &RolloutConfig,
+    cfg: &LearningConfig,
     player: G::PlayerId,
     p1_explores: usize,
     p2_explores: usize,
@@ -241,7 +213,7 @@ pub fn mcts_vs_mcts<G: Game<N>, const N: usize>(
 }
 
 pub fn gather_experience<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
-    cfg: &RolloutConfig,
+    cfg: &LearningConfig,
     policy: &mut P,
     rng: &mut R,
     buffer: &mut ReplayBuffer<G, N>,

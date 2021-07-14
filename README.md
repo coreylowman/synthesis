@@ -9,11 +9,11 @@ https://lczero.org/blog/2018/12/alphazero-paper-and-lc0-v0191/
 
 This repo is a cargo workspace made up of multiple crates & binaries:
 
-- ragz: The main crate with all the main training & MCTS logic in it
-- riches: A binary that uses the ragz library & holds game specific code/NNs for each game
+- synthesis: The main library crate with all the main training & MCTS logic in it
+- study-connect4: A binary crate that uses the synthesis library to train a network to play Connect4
 - base65536: A small crate to encode/decode u8's into valid utf-8 strings
 - slimnn: A small neural network crate in pure rust
-- invest: A binary that saves pytorch weights into a format slimnn can understand
+- export: A binary crate that saves pytorch weights into a format slimnn can understand
 
 TODOS
 
@@ -39,12 +39,12 @@ TODOS
 - [x] fill buffer with random games at first
 - [x] Use fraction of Q value + end game value.
   - [x] linear interpolate based on turn in game where 1st turn gets q value, last turn gets v
+- [x] Assume un-evaluated node (FPU) as -1
 - [x] MCTS with solver
   - [ ] abort games if solver figures out if outcome is decided
 - [ ] minimax value target (instead of Q)
 - [ ] smart deduplication in training data (ie average all stats for each state)
 - [ ] move order by action prob while expanding a node
-- [ ] Assume un-evaluated node (FPU) as -1
 - [ ] separate exploration/exploitation
   - [ ] exploration process that builds off of self play line by sampling other states backward
   - [ ] exploit process that samples a state from ^ and exploits all the way down
@@ -53,12 +53,15 @@ TODOS
   - [ ] sample range
 - [ ] change learning rate throughout training (cyclic? linear decrease?)
 - [ ] calculate c_puct instead of hardcoding
+- [ ] only add solved states to buffer?
+- [ ] UCT instead of puct?
+- [ ] Interpolate policy between search policy and best action?
 
 Neural Network Architecture
 - [ ] Value head as distribution of {W,D,L}
 - [ ] output
   - [ ] clamp instead of tanh?
-  - [ ] no final activation for value, but clamp in eval()?
+  - [x] no final activation for value, but clamp in eval()?
 
 Quality of life todos
 - [ ] save replay buffer along with weights so you can resume training

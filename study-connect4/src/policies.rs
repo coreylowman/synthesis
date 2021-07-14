@@ -1,6 +1,6 @@
-use crate::games::Connect4;
-use ragz::prelude::*;
+use crate::connect4::Connect4;
 use slimnn::{Activation, Conv2d, Linear, ReLU, Softmax};
+use synthesis::prelude::*;
 use tch::{
     self,
     nn::{self, ConvConfig},

@@ -3,7 +3,7 @@
 members = [
     "base65536",
     "slimnn",
-    "ragz",
-    "riches",
-    "invest",
+    "synthesis",
+    "export",
+    "study-connect4",
 ]

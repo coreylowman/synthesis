@@ -1,5 +1,5 @@
 [package]
-name = "ragz"
+name = "synthesis"
 version = "0.1.0"
 authors = ["Corey Lowman <clowman1993@gmail.com>"]
 edition = "2018"

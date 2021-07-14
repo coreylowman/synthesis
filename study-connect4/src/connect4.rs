@@ -1,4 +1,4 @@
-use ragz::game::*;
+use synthesis::game::*;
 
 /*
 +----------------------------+
