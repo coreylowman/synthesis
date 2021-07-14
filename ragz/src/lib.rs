@@ -1,5 +1,5 @@
 mod data;
-pub mod env;
+pub mod game;
 mod mcts;
 pub mod policies;
 pub mod prelude;
@@ -7,7 +7,7 @@ mod runner;
 mod utils;
 
 use crate::data::*;
-use crate::env::*;
+use crate::game::*;
 use crate::policies::*;
 use crate::runner::*;
 pub use crate::runner::{RolloutConfig, ValueTarget};
@@ -34,7 +34,7 @@ pub struct TrainConfig {
     pub logs: std::path::PathBuf,
 }
 
-pub fn evaluator<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
+pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
     train_cfg: TrainConfig,
     rollout_cfg: RolloutConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -42,7 +42,7 @@ pub fn evaluator<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
     let pgn_path = train_cfg.logs.join("results.pgn");
     let mut pgn = std::fs::File::create(&pgn_path)?;
     let _guard = tch::no_grad_guard();
-    let first_player = E::new().player();
+    let first_player = G::new().player();
     let all_explores = [100, 200, 400, 800, 1600, 3200, 6400, 12800];
 
     for i in 0..all_explores.len() {
@@ -55,7 +55,7 @@ pub fn evaluator<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
                     &mut pgn,
                     &format!("VanillaMCTS{}", all_explores[i]),
                     &format!("VanillaMCTS{}", all_explores[j]),
-                    mcts_vs_mcts::<E, N>(
+                    mcts_vs_mcts::<G, N>(
                         &rollout_cfg,
                         first_player,
                         all_explores[i],
@@ -121,7 +121,7 @@ pub fn evaluator<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
     Ok(())
 }
 
-pub fn trainer<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
+pub fn trainer<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
     train_cfg: &TrainConfig,
     rollout_cfg: &RolloutConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -131,7 +131,7 @@ pub fn trainer<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
     std::fs::create_dir(&models_dir)?;
     save(&train_cfg.logs, "train_cfg.json", train_cfg)?;
     save(&train_cfg.logs, "rollout_cfg.json", rollout_cfg)?;
-    save_str(&train_cfg.logs, "env_name", &E::NAME.into())?;
+    save_str(&train_cfg.logs, "env_name", &G::NAME.into())?;
     save_str(&train_cfg.logs, "git_hash", &git_hash()?)?;
     save_str(&train_cfg.logs, "git_diff.patch", &git_diff()?)?;
 
@@ -143,7 +143,7 @@ pub fn trainer<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
     let mut opt = Adam::default().build(&vs, train_cfg.lr)?;
     opt.set_weight_decay(train_cfg.weight_decay);
 
-    let mut dims = E::get_state_dims();
+    let mut dims = G::get_state_dims();
 
     vs.save(models_dir.join(String::from("model_0.ot")))?;
 

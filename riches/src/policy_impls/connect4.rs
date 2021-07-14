@@ -1,4 +1,4 @@
-use crate::envs::Connect4;
+use crate::games::Connect4;
 use ragz::prelude::*;
 use slimnn::{Activation, Conv2d, Linear, ReLU, Softmax};
 use tch::{

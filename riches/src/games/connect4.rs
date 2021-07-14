@@ -1,4 +1,4 @@
-use ragz::env::*;
+use ragz::game::*;
 
 /*
 +----------------------------+
@@ -140,7 +140,7 @@ impl Connect4 {
     }
 }
 
-impl Env<WIDTH> for Connect4 {
+impl Game<WIDTH> for Connect4 {
     const NAME: &'static str = "Connect4";
     const NUM_PLAYERS: usize = 2;
 

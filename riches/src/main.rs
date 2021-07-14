@@ -1,12 +1,12 @@
-mod envs;
+mod games;
 mod policy_impls;
 
-use crate::envs::*;
+use crate::games::*;
 use crate::policy_impls::*;
 use ragz::prelude::*;
 use ragz::{evaluator, train_dir, trainer, RolloutConfig, TrainConfig, ValueTarget};
 
-fn run<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
+fn run<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let train_cfg = TrainConfig {
         lr: 1e-3,
@@ -15,7 +15,7 @@ fn run<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
         num_epochs: 20,
         batch_size: 64,
         seed: 0,
-        logs: train_dir("./_logs", E::NAME)?,
+        logs: train_dir("./_logs", G::NAME)?,
     };
 
     // TODO try 1600 explores and see if still stuck at 400
@@ -45,8 +45,8 @@ fn run<E: Env<N>, P: Policy<E, N> + NNPolicy<E, N>, const N: usize>(
     let eval_train_cfg = train_cfg.clone();
     let eval_rollout_cfg = rollout_cfg.clone();
     let eval_handle =
-        std::thread::spawn(move || evaluator::<E, P, N>(eval_train_cfg, eval_rollout_cfg).unwrap());
-    trainer::<E, P, N>(&train_cfg, &rollout_cfg)?;
+        std::thread::spawn(move || evaluator::<G, P, N>(eval_train_cfg, eval_rollout_cfg).unwrap());
+    trainer::<G, P, N>(&train_cfg, &rollout_cfg)?;
     eval_handle.join().unwrap();
     Ok(())
 }

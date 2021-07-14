@@ -1,19 +1,21 @@
-use crate::env::Env;
+use crate::game::Game;
 use crate::policies::Policy;
 use std::collections::HashMap;
 
-pub struct PolicyWithCache<'a, E: Env<N>, P: Policy<E, N>, const N: usize> {
+pub struct PolicyWithCache<'a, G: Game<N>, P: Policy<G, N>, const N: usize> {
     pub policy: &'a mut P,
-    pub cache: HashMap<E::State, ([f32; N], f32)>,
+    pub cache: HashMap<G::State, ([f32; N], f32)>,
 }
 
-impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> Policy<E, N> for PolicyWithCache<'a, E, P, N> {
-    fn eval(&mut self, env: &E) -> ([f32; N], f32) {
-        let state = env.state();
+impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> Policy<G, N>
+    for PolicyWithCache<'a, G, P, N>
+{
+    fn eval(&mut self, game: &G) -> ([f32; N], f32) {
+        let state = game.state();
         match self.cache.get(&state) {
             Some(pi_v) => *pi_v,
             None => {
-                let pi_v = self.policy.eval(env);
+                let pi_v = self.policy.eval(game);
                 self.cache.insert(state, pi_v);
                 pi_v
             }
@@ -21,18 +23,18 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> Policy<E, N> for PolicyWith
     }
 }
 
-pub struct OwnedPolicyWithCache<E: Env<N>, P: Policy<E, N>, const N: usize> {
+pub struct OwnedPolicyWithCache<G: Game<N>, P: Policy<G, N>, const N: usize> {
     pub policy: P,
-    pub cache: HashMap<E::State, ([f32; N], f32)>,
+    pub cache: HashMap<G::State, ([f32; N], f32)>,
 }
 
-impl<E: Env<N>, P: Policy<E, N>, const N: usize> Policy<E, N> for OwnedPolicyWithCache<E, P, N> {
-    fn eval(&mut self, env: &E) -> ([f32; N], f32) {
-        let state = env.state();
+impl<G: Game<N>, P: Policy<G, N>, const N: usize> Policy<G, N> for OwnedPolicyWithCache<G, P, N> {
+    fn eval(&mut self, game: &G) -> ([f32; N], f32) {
+        let state = game.state();
         match self.cache.get(&state) {
             Some(pi_v) => *pi_v,
             None => {
-                let pi_v = self.policy.eval(env);
+                let pi_v = self.policy.eval(game);
                 self.cache.insert(state, pi_v);
                 pi_v
             }

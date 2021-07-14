@@ -1,4 +1,4 @@
-use crate::env::Env;
+use crate::game::Game;
 use std::{collections::HashMap, ffi::c_void};
 use tch::{Kind, Tensor};
 use torch_sys::at_tensor_of_data;
@@ -89,8 +89,8 @@ pub fn tensor<T>(data: &[T], dims: &[i64], kind: tch::Kind) -> Tensor {
     unsafe { Tensor::from_ptr(at_tensor_of_data(data, dims, ndims, dsize, dtype)) }
 }
 
-pub struct FlatBatch<E: Env<N>, const N: usize> {
-    pub states: Vec<E::State>,
+pub struct FlatBatch<G: Game<N>, const N: usize> {
+    pub states: Vec<G::State>,
     pub pis: Vec<[f32; N]>,
     pub vs: Vec<f32>,
 }
@@ -101,16 +101,16 @@ struct StateStatistics<const N: usize> {
     num: u32,
 }
 
-pub struct ReplayBuffer<E: Env<N>, const N: usize> {
+pub struct ReplayBuffer<G: Game<N>, const N: usize> {
     game_id: usize,
     steps: usize,
     game_ids: Vec<usize>,
-    pub states: Vec<E::State>,
+    pub states: Vec<G::State>,
     pub pis: Vec<[f32; N]>,
     pub vs: Vec<f32>,
 }
 
-impl<E: Env<N>, const N: usize> ReplayBuffer<E, N> {
+impl<G: Game<N>, const N: usize> ReplayBuffer<G, N> {
     pub fn new(n: usize) -> Self {
         Self {
             game_id: 0,
@@ -144,7 +144,7 @@ impl<E: Env<N>, const N: usize> ReplayBuffer<E, N> {
         self.vs.len()
     }
 
-    pub fn add(&mut self, state: &E::State, pi: &[f32; N], v: f32) {
+    pub fn add(&mut self, state: &G::State, pi: &[f32; N], v: f32) {
         self.game_ids.push(self.game_id);
         self.steps += 1;
         self.states.push(state.clone());
@@ -175,7 +175,7 @@ impl<E: Env<N>, const N: usize> ReplayBuffer<E, N> {
         }
     }
 
-    pub fn deduplicate(&self) -> FlatBatch<E, N> {
+    pub fn deduplicate(&self) -> FlatBatch<G, N> {
         let mut statistics = HashMap::with_capacity(100 * self.game_ids.len());
         for i in 0..self.game_ids.len() {
             let stats = statistics

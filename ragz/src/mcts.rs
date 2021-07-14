@@ -1,4 +1,4 @@
-use crate::env::{Env, Outcome};
+use crate::game::{Game, Outcome};
 use crate::policies::Policy;
 use rand::{distributions::Distribution, Rng};
 use rand_distr::Dirichlet;
@@ -7,11 +7,11 @@ type NodeId = u32;
 type ActionId = u8;
 
 #[derive(Debug)]
-struct Node<E: Env<N>, const N: usize> {
+struct Node<G: Game<N>, const N: usize> {
     parent: NodeId,            // 4 bytes
     first_child: NodeId,       // 4 bytes
     num_children: u8,          // 1 byte
-    env: E,                    // ? bytes
+    game: G,                   // ? bytes
     is_over: bool,             // 1 byte
     solution: Option<Outcome>, // 1 byte
     action: ActionId,          // 1 byte
@@ -20,10 +20,10 @@ struct Node<E: Env<N>, const N: usize> {
     num_visits: f32,           // 4 bytes
 }
 
-impl<E: Env<N>, const N: usize> Node<E, N> {
+impl<G: Game<N>, const N: usize> Node<G, N> {
     fn unvisited(
         parent: NodeId,
-        env: E,
+        game: G,
         is_over: bool,
         solution: Option<Outcome>,
         action: u8,
@@ -33,7 +33,7 @@ impl<E: Env<N>, const N: usize> Node<E, N> {
             parent,
             first_child: 0,
             num_children: 0,
-            env,
+            game,
             action,
             is_over,
             solution,
@@ -75,26 +75,26 @@ impl<E: Env<N>, const N: usize> Node<E, N> {
     }
 }
 
-pub struct MCTS<'a, E: Env<N>, P: Policy<E, N>, const N: usize> {
+pub struct MCTS<'a, G: Game<N>, P: Policy<G, N>, const N: usize> {
     root: NodeId,
     offset: NodeId,
-    nodes: Vec<Node<E, N>>,
+    nodes: Vec<Node<G, N>>,
     policy: &'a mut P,
     c_puct: f32,
     solve: bool,
     fpu: f32,
 }
 
-impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
+impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
     pub fn exploit(
         explores: usize,
         c_puct: f32,
         solve: bool,
         fpu: f32,
         policy: &'a mut P,
-        env: E,
-    ) -> E::Action {
-        let mut mcts = Self::with_capacity(explores + 1, c_puct, solve, fpu, policy, env);
+        game: G,
+    ) -> G::Action {
+        let mut mcts = Self::with_capacity(explores + 1, c_puct, solve, fpu, policy, game);
         mcts.explore_n(explores);
         mcts.best_action()
     }
@@ -105,10 +105,10 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
         solve: bool,
         fpu: f32,
         policy: &'a mut P,
-        env: E,
+        game: G,
     ) -> Self {
         let mut nodes = Vec::with_capacity(capacity);
-        nodes.push(Node::unvisited(0, env, false, None, 0, 0.0));
+        nodes.push(Node::unvisited(0, game, false, None, 0, 0.0));
         let mut mcts = Self {
             root: 0,
             offset: 0,
@@ -127,24 +127,24 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
         self.nodes.len() as NodeId + self.offset
     }
 
-    fn node(&self, node_id: NodeId) -> &Node<E, N> {
+    fn node(&self, node_id: NodeId) -> &Node<G, N> {
         &self.nodes[(node_id - self.offset) as usize]
     }
 
-    fn mut_node(&mut self, node_id: NodeId) -> &mut Node<E, N> {
+    fn mut_node(&mut self, node_id: NodeId) -> &mut Node<G, N> {
         &mut self.nodes[(node_id - self.offset) as usize]
     }
 
-    fn children_of(&self, node: &Node<E, N>) -> &[Node<E, N>] {
+    fn children_of(&self, node: &Node<G, N>) -> &[Node<G, N>] {
         &self.nodes
             [(node.first_child - self.offset) as usize..(node.last_child() - self.offset) as usize]
     }
 
-    fn mut_nodes(&mut self, first_child: NodeId, last_child: NodeId) -> &mut [Node<E, N>] {
+    fn mut_nodes(&mut self, first_child: NodeId, last_child: NodeId) -> &mut [Node<G, N>] {
         &mut self.nodes[(first_child - self.offset) as usize..(last_child - self.offset) as usize]
     }
 
-    pub fn solution(&self, action: &E::Action) -> Option<Outcome> {
+    pub fn solution(&self, action: &G::Action) -> Option<Outcome> {
         let action: usize = (*action).into();
         let action = action as u8;
         let root = self.node(self.root);
@@ -226,7 +226,7 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
         }
     }
 
-    pub fn best_action(&self) -> E::Action {
+    pub fn best_action(&self) -> G::Action {
         let root = self.node(self.root);
 
         let mut best_action = None;
@@ -254,7 +254,7 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
         loop {
             let node = self.mut_node(node_id);
             if node.is_over {
-                let v = node.env.reward(node.env.player());
+                let v = node.game.reward(node.game.player());
                 self.backprop(node_id, v, true);
                 return;
             } else if let Some(outcome) = node.solution {
@@ -303,24 +303,25 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
     fn visit(&mut self, node_id: NodeId) -> (f32, bool) {
         let first_child = self.next_node_id();
         let node = self.node(node_id);
-        let env = node.env.clone();
-        let (logits, value) = self.policy.eval(&env);
+        let game = node.game.clone();
+        let (logits, value) = self.policy.eval(&game);
         let mut num_children = 0;
         let mut any_solved = false;
         let mut max_logit = f32::NEG_INFINITY;
-        for action in env.iter_actions() {
-            let mut child_env = env.clone();
-            let is_over = child_env.step(&action);
+        for action in game.iter_actions() {
+            let mut child_game = game.clone();
+            let is_over = child_game.step(&action);
             let solution = if is_over {
                 any_solved = true;
-                Some(child_env.reward(child_env.player()).into())
+                Some(child_game.reward(child_game.player()).into())
             } else {
                 None
             };
             let action: usize = action.into();
             let logit = logits[action];
             max_logit = max_logit.max(logit);
-            let child = Node::unvisited(node_id, child_env, is_over, solution, action as u8, logit);
+            let child =
+                Node::unvisited(node_id, child_game, is_over, solution, action as u8, logit);
             self.nodes.push(child);
             num_children += 1;
         }
@@ -402,7 +403,7 @@ mod tests {
     use rand::prelude::{SeedableRng, StdRng};
 
     use super::*;
-    use crate::env::HasTurnOrder;
+    use crate::game::HasTurnOrder;
     use crate::policies::RolloutPolicy;
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -504,7 +505,7 @@ mod tests {
         }
     }
 
-    impl Env<9> for TicTacToe {
+    impl Game<9> for TicTacToe {
         type PlayerId = PlayerId;
         type Action = Action;
         type ActionIterator = ActionIterator;

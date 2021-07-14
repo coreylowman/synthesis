@@ -1,5 +1,5 @@
 use crate::data::ReplayBuffer;
-use crate::env::Env;
+use crate::game::Game;
 use crate::mcts::MCTS;
 use crate::policies::{Policy, PolicyWithCache, RolloutPolicy};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -37,9 +37,9 @@ pub struct RolloutConfig {
     pub value_target: ValueTarget,
 }
 
-fn store_rewards<E: Env<N>, const N: usize>(
+fn store_rewards<G: Game<N>, const N: usize>(
     cfg: &RolloutConfig,
-    buffer: &mut ReplayBuffer<E, N>,
+    buffer: &mut ReplayBuffer<G, N>,
     start_i: usize,
     mut r: f32,
 ) {
@@ -82,13 +82,13 @@ fn store_rewards<E: Env<N>, const N: usize>(
     }
 }
 
-fn run_game<E: Env<N>, P: Policy<E, N>, R: Rng, const N: usize>(
+fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
     cfg: &RolloutConfig,
     policy: &mut P,
     rng: &mut R,
-    buffer: &mut ReplayBuffer<E, N>,
+    buffer: &mut ReplayBuffer<G, N>,
 ) {
-    let mut game = E::new();
+    let mut game = G::new();
     let mut is_over = false;
     let mut search_policy = [0.0; N];
     let mut num_turns = cfg.num_random_actions;
@@ -127,7 +127,7 @@ fn run_game<E: Env<N>, P: Policy<E, N>, R: Rng, const N: usize>(
         } else if num_turns < cfg.sample_action_until && mcts.solution(&best).is_none() {
             let dist = WeightedIndex::new(&search_policy).unwrap();
             let choice = dist.sample(rng);
-            E::Action::from(choice)
+            G::Action::from(choice)
         } else {
             best
         };
@@ -139,12 +139,12 @@ fn run_game<E: Env<N>, P: Policy<E, N>, R: Rng, const N: usize>(
     store_rewards(cfg, buffer, start_i, game.reward(start_player));
 }
 
-pub fn eval_against_random<E: Env<N>, P: Policy<E, N>, const N: usize>(
+pub fn eval_against_random<G: Game<N>, P: Policy<G, N>, const N: usize>(
     cfg: &RolloutConfig,
     policy: &mut P,
-    player: E::PlayerId,
+    player: G::PlayerId,
 ) -> f32 {
-    let mut game = E::new();
+    let mut game = G::new();
     let first_player = game.player();
     let mut opponent = StdRng::seed_from_u64(0);
     loop {
@@ -170,14 +170,14 @@ pub fn eval_against_random<E: Env<N>, P: Policy<E, N>, const N: usize>(
     game.reward(first_player)
 }
 
-pub fn eval_against_vanilla_mcts<E: Env<N>, P: Policy<E, N>, const N: usize>(
+pub fn eval_against_vanilla_mcts<G: Game<N>, P: Policy<G, N>, const N: usize>(
     cfg: &RolloutConfig,
     policy: &mut P,
-    player: E::PlayerId,
+    player: G::PlayerId,
     opponent_explores: usize,
     seed: u64,
 ) -> f32 {
-    let mut game = E::new();
+    let mut game = G::new();
     let first_player = game.player();
     let mut rng = StdRng::seed_from_u64(seed);
     let mut rollout_policy = RolloutPolicy { rng: &mut rng };
@@ -209,16 +209,16 @@ pub fn eval_against_vanilla_mcts<E: Env<N>, P: Policy<E, N>, const N: usize>(
     game.reward(first_player)
 }
 
-pub fn mcts_vs_mcts<E: Env<N>, const N: usize>(
+pub fn mcts_vs_mcts<G: Game<N>, const N: usize>(
     cfg: &RolloutConfig,
-    player: E::PlayerId,
+    player: G::PlayerId,
     p1_explores: usize,
     p2_explores: usize,
     seed: u64,
 ) -> f32 {
     let mut rng = StdRng::seed_from_u64(seed);
     let mut rollout_policy = RolloutPolicy { rng: &mut rng };
-    let mut game = E::new();
+    let mut game = G::new();
     let first_player = game.player();
     loop {
         let action = MCTS::exploit(
@@ -240,11 +240,11 @@ pub fn mcts_vs_mcts<E: Env<N>, const N: usize>(
     game.reward(first_player)
 }
 
-pub fn gather_experience<E: Env<N>, P: Policy<E, N>, R: Rng, const N: usize>(
+pub fn gather_experience<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
     cfg: &RolloutConfig,
     policy: &mut P,
     rng: &mut R,
-    buffer: &mut ReplayBuffer<E, N>,
+    buffer: &mut ReplayBuffer<G, N>,
 ) {
     let mut cached_policy = PolicyWithCache {
         policy,
