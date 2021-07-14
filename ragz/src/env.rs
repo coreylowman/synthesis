@@ -64,7 +64,7 @@ impl PartialOrd for Outcome {
     }
 }
 
-pub trait Env<const N: usize>: Clone {
+pub trait Env<const N: usize>: Clone + std::fmt::Debug {
     type PlayerId: HasTurnOrder;
     type Action: Eq + Clone + Copy + std::fmt::Debug + Into<usize> + From<usize>;
     type ActionIterator: Iterator<Item = Self::Action>;

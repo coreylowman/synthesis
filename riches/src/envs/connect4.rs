@@ -82,7 +82,7 @@ const fn won(bb: u64) -> bool {
     v + h + d1 + d2 > 0
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Connect4 {
     my_bb: u64,
     op_bb: u64,

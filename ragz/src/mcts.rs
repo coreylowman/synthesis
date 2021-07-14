@@ -6,6 +6,7 @@ use rand_distr::Dirichlet;
 type NodeId = u32;
 type ActionId = u8;
 
+#[derive(Debug)]
 struct Node<E: Env<N>, const N: usize> {
     parent: NodeId,            // 4 bytes
     first_child: NodeId,       // 4 bytes
@@ -135,8 +136,8 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
     }
 
     fn children_of(&self, node: &Node<E, N>) -> &[Node<E, N>] {
-        &self.nodes[(node.first_child - self.offset) as usize
-            ..(node.first_child + node.num_children as u32 - self.offset) as usize]
+        &self.nodes
+            [(node.first_child - self.offset) as usize..(node.last_child() - self.offset) as usize]
     }
 
     fn mut_nodes(&mut self, first_child: NodeId, last_child: NodeId) -> &mut [Node<E, N>] {
@@ -148,6 +149,9 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
         let action = action as u8;
         let root = self.node(self.root);
         for child in self.children_of(root) {
+            if child.is_unvisited() {
+                continue;
+            }
             if child.action == action {
                 return child.solution;
             }
@@ -182,6 +186,9 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
             (0.0, 0.0, 0.0, 1.0)
         };
         for child in self.children_of(root) {
+            if child.is_unvisited() {
+                continue;
+            }
             let value = match child.solution {
                 Some(Outcome::Lose) => win_value,
                 Some(Outcome::Draw) => draw_value,
@@ -300,7 +307,7 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
         let (logits, value) = self.policy.eval(&env);
         let mut num_children = 0;
         let mut any_solved = false;
-        let mut total = 0.0;
+        let mut max_logit = f32::NEG_INFINITY;
         for action in env.iter_actions() {
             let mut child_env = env.clone();
             let is_over = child_env.step(&action);
@@ -311,10 +318,10 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
                 None
             };
             let action: usize = action.into();
-            let logit = logits[action].exp();
+            let logit = logits[action];
+            max_logit = max_logit.max(logit);
             let child = Node::unvisited(node_id, child_env, is_over, solution, action as u8, logit);
             self.nodes.push(child);
-            total += logit;
             num_children += 1;
         }
 
@@ -322,6 +329,13 @@ impl<'a, E: Env<N>, P: Policy<E, N>, const N: usize> MCTS<'a, E, P, N> {
         node.mark_visited(first_child, num_children);
         let first_child = node.first_child;
         let last_child = node.last_child();
+
+        // stable softmax
+        let mut total = 0.0;
+        for child in self.mut_nodes(first_child, last_child) {
+            child.action_prob = (child.action_prob - max_logit).exp();
+            total += child.action_prob;
+        }
         for child in self.mut_nodes(first_child, last_child) {
             child.action_prob /= total;
         }
