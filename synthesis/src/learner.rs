@@ -105,6 +105,7 @@ pub fn learner<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
 
     Ok(())
 }
+
 fn gather_experience<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
     cfg: &LearningConfig,
     policy: &mut P,
@@ -131,6 +132,12 @@ fn gather_experience<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
     bar.finish();
 }
 
+struct StateInfo {
+    turn: usize,
+    q: f32,
+    z: f32,
+}
+
 fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
     cfg: &LearningConfig,
     policy: &mut P,
@@ -140,9 +147,9 @@ fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
     let mut game = G::new();
     let mut is_over = false;
     let mut search_policy = [0.0; N];
-    let mut num_turns = cfg.num_random_actions;
-    let start_i = buffer.vs.len();
+    let mut num_turns = cfg.num_random_actions; // TODO fix this, should be 0.0
     let start_player = game.player();
+    let mut state_infos = Vec::with_capacity(100);
 
     while !is_over {
         let mut mcts = MCTS::with_capacity(
@@ -154,15 +161,24 @@ fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
             game.clone(),
         );
 
+        // explore
         if cfg.noisy_explore {
             mcts.add_dirichlet_noise(rng, cfg.alpha, cfg.noise_weight);
         }
-
         mcts.explore_n(cfg.num_explores);
-        mcts.extract_search_policy(&mut search_policy);
-        let best = mcts.best_action();
-        buffer.add(&game.state(), &search_policy, mcts.extract_q());
 
+        // store in buffer
+        mcts.extract_search_policy(&mut search_policy);
+        buffer.add(&game.state(), &search_policy, 0.0);
+        state_infos.push(StateInfo {
+            turn: num_turns + 1,
+            q: mcts.extract_q(),
+            z: 0.0,
+        });
+
+        // pick action
+        // TODO flip a bool if mcts.solution is some instead of checking again
+        let best = mcts.best_action();
         let action = if num_turns < cfg.num_random_actions {
             let n = rng.gen_range(0..game.iter_actions().count() as u8) as usize;
             game.iter_actions().nth(n).unwrap()
@@ -178,50 +194,57 @@ fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
         num_turns += 1;
     }
 
-    store_rewards(cfg, buffer, start_i, game.reward(start_player));
+    fill_zs(&mut state_infos, game.reward(start_player));
+    store_rewards(cfg, buffer, &state_infos);
+}
+
+fn fill_zs(state_infos: &mut Vec<StateInfo>, mut reward: f32) {
+    for state_value in state_infos.iter_mut() {
+        state_value.z = reward;
+        reward = -reward;
+    }
 }
 
 fn store_rewards<G: Game<N>, const N: usize>(
     cfg: &LearningConfig,
     buffer: &mut ReplayBuffer<G, N>,
-    start_i: usize,
-    mut r: f32,
+    state_infos: &Vec<StateInfo>,
 ) {
-    // NOTE: buffer.vs[i] already has q value in it
-    let num_turns = buffer.curr_steps() as f32 - start_i as f32;
-    for (turn, i) in (start_i..buffer.curr_steps()).enumerate() {
-        buffer.vs[i] = match cfg.value_target {
-            ValueTarget::Q => buffer.vs[i],
-            ValueTarget::Z => r,
-            ValueTarget::ZplusQover2 => (buffer.vs[i] + r) / 2.0,
+    let num_turns = state_infos.len();
+    let start_i = buffer.curr_steps() - num_turns;
+    let end_i = buffer.curr_steps();
+    for (buffer_value, state) in buffer.vs[start_i..end_i].iter_mut().zip(state_infos) {
+        *buffer_value = match cfg.value_target {
+            ValueTarget::Q => state.q,
+            ValueTarget::Z => state.z,
+            ValueTarget::ZplusQover2 => (state.z + state.q) / 2.0,
             ValueTarget::Interpolate => {
-                let t = (turn + 1) as f32 / num_turns;
-                r * t + buffer.vs[i] * (1.0 - t)
+                let t = state.turn as f32 / num_turns as f32;
+                state.z * t + state.q * (1.0 - t)
             }
             ValueTarget::QForSamples => {
-                if turn < cfg.sample_action_until {
-                    buffer.vs[i]
+                if state.turn <= cfg.sample_action_until {
+                    state.q
                 } else {
-                    r
+                    state.z
                 }
             }
             ValueTarget::InterpolateForSamples => {
-                let t = (turn + 1) as f32 / num_turns;
-                if turn < cfg.sample_action_until {
-                    r * t + buffer.vs[i] * (1.0 - t)
+                let t = state.turn as f32 / num_turns as f32;
+                if state.turn <= cfg.sample_action_until {
+                    state.z * t + state.q * (1.0 - t)
                 } else {
-                    r
+                    state.z
                 }
             }
             ValueTarget::SteepInterpolateForSamples => {
-                let t = (turn + 1) as f32 / cfg.sample_action_until as f32;
-                if turn < cfg.sample_action_until {
-                    r * t + buffer.vs[i] * (1.0 - t)
+                let t = state.turn as f32 / cfg.sample_action_until as f32;
+                if state.turn <= cfg.sample_action_until {
+                    state.z * t + state.q * (1.0 - t)
                 } else {
-                    r
+                    state.z
                 }
             }
         };
-        r = -r;
     }
 }
