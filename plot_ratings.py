@@ -31,6 +31,7 @@ def main():
     names = sorted(scores)
     elos = [scores[name] - scores[0] for name in names]
     plt.plot(names, elos, label="Learner")
+    plt.scatter(names, elos)
     plt.plot(
         [names[0], names[-1]],
         [random_score - scores[0], random_score - scores[0]],
