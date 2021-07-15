@@ -2,3 +2,7 @@
 /_logs
 /.vscode
 /_models
+.cargo
+.idea
+Cargo.lock
+bayeselo.exe
