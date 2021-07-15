@@ -35,19 +35,21 @@ What's implemented:
 
 ###### General
 
-look into https://github.com/leela-zero/leela-zero/issues/1156
-
-- [ ] abort games if solver figures out if outcome is decided
-- [ ] minimax value target (instead of Q)
-- [ ] smart deduplication in training data (ie average all stats for each state)
-- [ ] move order by action prob while expanding a node
-- [ ] separate exploration/exploitation
-  - [ ] exploration process that builds off of self play line by sampling other states backward
+- [ ] Explore tree reuse in self play games
+- [ ] Early termination in self play games if solver figures out if outcome is decided
+- [ ] Add minimax value target (backprop max value)
+- [ ] State deduplication in training data (ie average all stats for each state)
+- [ ] Order actions by action prob while expanding a node
+- [ ] Schedules for various parameters
+  - [ ] sample_actions_until
+  - [ ] learning rate
+  - [ ] value target
+  - [ ] noise_weight
+- [ ] Interpolate policy between search policy and best action
+- [ ] New algorithm for separate exploration/exploitation
+  - [ ] exploration process that builds off of exploit play line by sampling other states backward
   - [ ] exploit process that samples a state from ^ and exploits all the way down
-- [ ] schedule for sample_actions_until
-- [ ] schedule for learning rate
-- [ ] calculate c_puct instead of hardcoding
-- [ ] Interpolate policy between search policy and best action?
+
 
 ###### Neural Network Architecture
 - [ ] Value head as distribution of {W,D,L}
@@ -57,12 +59,13 @@ look into https://github.com/leela-zero/leela-zero/issues/1156
 
 ###### Quality of life
 - [ ] save replay buffer in addition to weights so you can resume training
+- [ ] subdivide config into different config structs
 
 ###### Performance
 - [x] compiler flags (LTO=fat, codegen-units=1, target=native)
 - [ ] multi threaded gather_experience
 - [ ] Add hash fn to Game that returns u64, remove Hash from Game::State, put floats in Game::State
-- [ ] Reduce allocations (fixed buffer for MCTS nodes?)
+- [ ] Reduce allocations (pre allocated buffer for MCTS nodes?)
 - [ ] speed up conv2d with im2col https://leonardoaraujosantos.gitbook.io/artificial-inteligence/machine_learning/deep_learning/convolution_layer/making_faster
   - [ ] https://sahnimanas.github.io/post/anatomy-of-a-high-performance-convolution/
 - [ ] reverse linear weight dimensions for speed up
