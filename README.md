@@ -1,4 +1,4 @@
-# Rust Implementation of AlphaZero
+# Synthesis: A Rust implementation of AlphaZero
 
 This repo is a cargo workspace made up of multiple crates & binaries:
 
@@ -13,12 +13,12 @@ What's implemented:
 - 💪 General MCTS implementation that supports the standard rollout method as well as using a NN in place of rollouts
   - Includes MCTS Solver [2]
   - Includes FPU [3]
-- 💡 An AlphaZero learner that collects experience using MCTS+NN and trains a policy and value function
+- 💡 An AlphaZero [4] learner that collects experience using MCTS+NN and trains a policy and value function
   - Supports multiple value targets
   - All hyperparameters exposed
 - 📈 Lightweight evaluation against standard rollout mcts with various number of explores
   - Saves game outcomes to a pgn file
-  - Runs bayeselo [4] executable to produce elo ratings
+  - Runs bayeselo [5] executable to produce elo ratings
   - Plots ratings 🎉
 - 🎲 9x7 Connect4 as a playground to test things
 - 😎 Support for running without torch
@@ -28,7 +28,8 @@ What's implemented:
 1. https://github.com/LaurentMazare/tch-rs
 2. Winands, Mark HM, Yngvi Björnsson, and Jahn-Takeshi Saito. "Monte-Carlo tree search solver." International Conference on Computers and Games. Springer, Berlin, Heidelberg, 2008.
 3. Gelly, Sylvain, and Yizao Wang. "Exploration exploitation in go: UCT for Monte-Carlo go." NIPS: Neural Information Processing Systems Conference On-line trading of Exploration and Exploitation Workshop. 2006.
-4. https://www.remi-coulom.fr/Bayesian-Elo/
+4. https://deepmind.com/blog/article/alphazero-shedding-new-light-grand-games-chess-shogi-and-go
+5. https://www.remi-coulom.fr/Bayesian-Elo/
 
 ### Improvements
 
@@ -79,6 +80,7 @@ for X number of games:
 
 ### Resources for learning more about AlphaZero
 
+https://medium.com/@sleepsonthefloor/azfour-a-connect-four-webapp-powered-by-the-alphazero-algorithm-d0c82d6f3ae9
 https://deepmind.com/blog/article/alphazero-shedding-new-light-grand-games-chess-shogi-and-go
 https://www.nature.com/articles/nature24270.epdf
 https://dselsam.github.io/posts/2018-06-06-issues-with-alpha-zero.html
