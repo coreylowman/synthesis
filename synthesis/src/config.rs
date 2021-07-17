@@ -2,13 +2,10 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum ValueTarget {
-    Z,                          // Outcome of game {-1, 0, 1}
-    Q,                          // Avg Value found while searching
-    ZplusQover2,                // (Q + Z) / 2
-    Interpolate,                // interpolate between Z and Q
-    QForSamples,                // Q if action is sampled, Z if action is exploit
-    InterpolateForSamples,      // Interp if action is sampled, Z if action is exploit
-    SteepInterpolateForSamples, // Interp to end of sampling if action is sampled, Z if action is exploit
+    Z,         // Outcome of game {-1, 0, 1}
+    Q,         // Avg Value found while searching
+    QZaverage, // (Q + Z) / 2
+    QtoZ,      // interpolate from Q to Z based on turns
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -37,6 +34,8 @@ pub struct LearningConfig {
     pub alpha: f32,
     pub noisy_explore: bool,
     pub noise_weight: f32,
+
+    // mcts params
     pub c_puct: f32,
     pub solve: bool,
     pub fpu: f32,

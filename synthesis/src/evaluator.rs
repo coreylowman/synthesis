@@ -15,14 +15,16 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
     let mut pgn = std::fs::File::create(&pgn_path)?;
     let _guard = tch::no_grad_guard();
     let first_player = G::new().player();
-    let all_explores = [100, 200, 400, 800, 1600, 3200, 6400, 12800];
+    let all_explores = [
+        100, 200, 400, 800, 1600, 2400, 3200, 4800, 6400, 9600, 12800,
+    ];
 
     for i in 0..all_explores.len() {
         for j in 0..all_explores.len() {
             if i == j {
                 continue;
             }
-            for seed in 0..10 {
+            for seed in 0..50 {
                 add_pgn_result(
                     &mut pgn,
                     &format!("VanillaMCTS{}", all_explores[i]),

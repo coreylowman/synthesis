@@ -203,7 +203,7 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
         }
     }
 
-    pub fn extract_q(&self) -> f32 {
+    pub fn extract_avg_value(&self) -> f32 {
         let root = self.node(self.root);
         root.cum_value / root.num_visits
     }
@@ -252,7 +252,7 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
     fn explore(&mut self) {
         let mut node_id = self.root;
         loop {
-            let node = self.mut_node(node_id);
+            let node = self.node(node_id);
             if node.is_over {
                 let v = node.game.reward(node.game.player());
                 self.backprop(node_id, v, true);
@@ -631,7 +631,7 @@ mod tests {
         assert_eq!(mcts.solution(&6.into()), Some(Outcome::Lose));
         assert_eq!(mcts.solution(&7.into()), None);
         assert_eq!(mcts.solution(&8.into()), None);
-        assert_eq!(mcts.extract_q(), 1.0);
+        assert_eq!(mcts.extract_avg_value(), 1.0);
         assert_eq!(mcts.best_action(), 6.into());
         assert_eq!(mcts.nodes.len(), 311);
     }
@@ -668,7 +668,7 @@ mod tests {
         assert_eq!(mcts.solution(&6.into()), None);
         assert_eq!(mcts.solution(&7.into()), Some(Outcome::Win));
         assert_eq!(mcts.solution(&8.into()), Some(Outcome::Win));
-        assert_eq!(mcts.extract_q(), -1.0);
+        assert_eq!(mcts.extract_avg_value(), -1.0);
         assert_eq!(mcts.best_action(), 1.into());
         assert_eq!(mcts.nodes.len(), 69);
     }
@@ -705,7 +705,7 @@ mod tests {
         assert_eq!(mcts.solution(&6.into()), Some(Outcome::Draw));
         assert_eq!(mcts.solution(&7.into()), Some(Outcome::Draw));
         assert_eq!(mcts.solution(&8.into()), Some(Outcome::Draw));
-        assert_eq!(mcts.extract_q(), 0.0);
+        assert_eq!(mcts.extract_avg_value(), 0.0);
         assert_eq!(mcts.best_action(), 1.into());
         assert_eq!(mcts.nodes.len(), 1533);
     }

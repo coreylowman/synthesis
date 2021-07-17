@@ -40,6 +40,7 @@ What's implemented:
 - [ ] Add minimax value target (backprop max value)
 - [ ] State deduplication in training data (ie average all stats for each state)
 - [ ] Order actions by action prob while expanding a node
+- [ ] Combine UCT + PUCT terms (as in http://kth.diva-portal.org/smash/get/diva2:1514096/FULLTEXT01.pdf)
 - [ ] Schedules for various parameters
   - [ ] sample_actions_until
   - [ ] learning rate
@@ -47,12 +48,15 @@ What's implemented:
   - [ ] noise_weight
 - [ ] Interpolate policy between search policy and best action
 - [ ] New algorithm for separate exploration/exploitation
+  - [ ] Is this ExIt? https://arxiv.org/pdf/1705.08439.pdf
   - [ ] exploration process that builds off of exploit play line by sampling other states backward
   - [ ] exploit process that samples a state from ^ and exploits all the way down
 
 
 ###### Neural Network Architecture
 - [ ] Value head as distribution of {W,D,L}
+  - [ ] Use highest predicted as value
+  - [ ] Use weighted sum as value
 - [ ] Value
   - [ ] clamp instead of tanh?
   - [x] no final activation for value, but clamp in eval()?

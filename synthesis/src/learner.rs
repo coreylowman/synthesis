@@ -49,16 +49,16 @@ pub fn learner<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
         }
 
         // convert to tensors
-        let flat_batch = buffer.deduplicate();
+        let dedup = buffer.deduplicate();
         println!(
             "Deduplicated {} -> {} steps",
             buffer.vs.len(),
-            flat_batch.vs.len()
+            dedup.vs.len()
         );
-        dims[0] = buffer.vs.len() as i64;
-        let states = tensor(&buffer.states, &dims, Kind::Bool).to_kind(tch::Kind::Float);
-        let target_pis = tensor(&buffer.pis, &[dims[0], N as i64], Kind::Float);
-        let target_vs = tensor(&buffer.vs, &[dims[0], 1], Kind::Float);
+        dims[0] = dedup.vs.len() as i64;
+        let states = tensor(&dedup.states, &dims, Kind::Bool).to_kind(tch::Kind::Float);
+        let target_pis = tensor(&dedup.pis, &[dims[0], N as i64], Kind::Float);
+        let target_vs = tensor(&dedup.vs, &[dims[0], 1], Kind::Float);
 
         let batch_mean = 1.0 / (cfg.batch_size as f32);
 
@@ -134,6 +134,7 @@ fn gather_experience<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
 
 struct StateInfo {
     turn: usize,
+    t: f32,
     q: f32,
     z: f32,
 }
@@ -147,7 +148,7 @@ fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
     let mut game = G::new();
     let mut is_over = false;
     let mut search_policy = [0.0; N];
-    let mut num_turns = cfg.num_random_actions; // TODO fix this, should be 0.0
+    let mut num_turns = 0;
     let start_player = game.player();
     let mut state_infos = Vec::with_capacity(100);
 
@@ -172,7 +173,8 @@ fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
         buffer.add(&game.state(), &search_policy, 0.0);
         state_infos.push(StateInfo {
             turn: num_turns + 1,
-            q: mcts.extract_q(),
+            t: 0.0,
+            q: mcts.extract_avg_value(),
             z: 0.0,
         });
 
@@ -194,13 +196,15 @@ fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
         num_turns += 1;
     }
 
-    fill_zs(&mut state_infos, game.reward(start_player));
+    fill_state_info(&mut state_infos, game.reward(start_player));
     store_rewards(cfg, buffer, &state_infos);
 }
 
-fn fill_zs(state_infos: &mut Vec<StateInfo>, mut reward: f32) {
+fn fill_state_info(state_infos: &mut Vec<StateInfo>, mut reward: f32) {
+    let num_turns = state_infos.len();
     for state_value in state_infos.iter_mut() {
         state_value.z = reward;
+        state_value.t = state_value.turn as f32 / num_turns as f32;
         reward = -reward;
     }
 }
@@ -217,34 +221,8 @@ fn store_rewards<G: Game<N>, const N: usize>(
         *buffer_value = match cfg.value_target {
             ValueTarget::Q => state.q,
             ValueTarget::Z => state.z,
-            ValueTarget::ZplusQover2 => (state.z + state.q) / 2.0,
-            ValueTarget::Interpolate => {
-                let t = state.turn as f32 / num_turns as f32;
-                state.z * t + state.q * (1.0 - t)
-            }
-            ValueTarget::QForSamples => {
-                if state.turn <= cfg.sample_action_until {
-                    state.q
-                } else {
-                    state.z
-                }
-            }
-            ValueTarget::InterpolateForSamples => {
-                let t = state.turn as f32 / num_turns as f32;
-                if state.turn <= cfg.sample_action_until {
-                    state.z * t + state.q * (1.0 - t)
-                } else {
-                    state.z
-                }
-            }
-            ValueTarget::SteepInterpolateForSamples => {
-                let t = state.turn as f32 / cfg.sample_action_until as f32;
-                if state.turn <= cfg.sample_action_until {
-                    state.z * t + state.q * (1.0 - t)
-                } else {
-                    state.z
-                }
-            }
+            ValueTarget::QZaverage => 0.5 * (state.q + state.z),
+            ValueTarget::QtoZ => state.z * state.t + state.q * (1.0 - state.t),
         };
     }
 }
