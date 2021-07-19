@@ -37,8 +37,6 @@ What's implemented:
 
 - [ ] Explore tree reuse in self play games
 - [ ] Early termination in self play games if solver figures out if outcome is decided
-- [ ] Add minimax value target (backprop max value)
-- [ ] State deduplication in training data (ie average all stats for each state)
 - [ ] Order actions by action prob while expanding a node
 - [ ] Combine UCT + PUCT terms (as in http://kth.diva-portal.org/smash/get/diva2:1514096/FULLTEXT01.pdf)
 - [ ] Schedules for various parameters
@@ -57,9 +55,6 @@ What's implemented:
 - [ ] Value head as distribution of {W,D,L}
   - [ ] Use highest predicted as value
   - [ ] Use weighted sum as value
-- [ ] Value
-  - [ ] clamp instead of tanh?
-  - [x] no final activation for value, but clamp in eval()?
 
 ###### Quality of life
 - [ ] save replay buffer in addition to weights so you can resume training
@@ -68,12 +63,10 @@ What's implemented:
 ###### Performance
 - [x] compiler flags (LTO=fat, codegen-units=1, target=native)
 - [ ] multi threaded gather_experience
-- [ ] Add hash fn to Game that returns u64, remove Hash from Game::State, put floats in Game::State
 - [ ] Reduce allocations (pre allocated buffer for MCTS nodes?)
 - [ ] speed up conv2d with im2col https://leonardoaraujosantos.gitbook.io/artificial-inteligence/machine_learning/deep_learning/convolution_layer/making_faster
   - [ ] https://sahnimanas.github.io/post/anatomy-of-a-high-performance-convolution/
 - [ ] reverse linear weight dimensions for speed up
-- [ ] C4 63x3 -> 256 -> 16 (first 9 policy, 10th value, last 6 unused for speed)
 - [ ] support outputting 16 bit floats instead of 32 bit floats https://github.com/starkat99/half-rs/blob/master/src/bfloat/convert.rs
 
 
