@@ -4,19 +4,27 @@ use std::collections::HashMap;
 
 pub struct PolicyWithCache<'a, G: Game<N>, P: Policy<G, N>, const N: usize> {
     pub policy: &'a mut P,
-    pub cache: HashMap<G::State, ([f32; N], f32)>,
+    pub cache: HashMap<G, ([f32; N], f32)>,
+}
+
+impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> PolicyWithCache<'a, G, P, N> {
+    pub fn with_capacity(capacity: usize, policy: &'a mut P) -> Self {
+        Self {
+            policy,
+            cache: HashMap::with_capacity(capacity),
+        }
+    }
 }
 
 impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> Policy<G, N>
     for PolicyWithCache<'a, G, P, N>
 {
     fn eval(&mut self, game: &G) -> ([f32; N], f32) {
-        let state = game.state();
-        match self.cache.get(&state) {
+        match self.cache.get(&game) {
             Some(pi_v) => *pi_v,
             None => {
                 let pi_v = self.policy.eval(game);
-                self.cache.insert(state, pi_v);
+                self.cache.insert(game.clone(), pi_v);
                 pi_v
             }
         }
@@ -25,17 +33,25 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> Policy<G, N>
 
 pub struct OwnedPolicyWithCache<G: Game<N>, P: Policy<G, N>, const N: usize> {
     pub policy: P,
-    pub cache: HashMap<G::State, ([f32; N], f32)>,
+    pub cache: HashMap<G, ([f32; N], f32)>,
+}
+
+impl<G: Game<N>, P: Policy<G, N>, const N: usize> OwnedPolicyWithCache<G, P, N> {
+    pub fn with_capacity(capacity: usize, policy: P) -> Self {
+        Self {
+            policy,
+            cache: HashMap::with_capacity(capacity),
+        }
+    }
 }
 
 impl<G: Game<N>, P: Policy<G, N>, const N: usize> Policy<G, N> for OwnedPolicyWithCache<G, P, N> {
     fn eval(&mut self, game: &G) -> ([f32; N], f32) {
-        let state = game.state();
-        match self.cache.get(&state) {
+        match self.cache.get(game) {
             Some(pi_v) => *pi_v,
             None => {
                 let pi_v = self.policy.eval(game);
-                self.cache.insert(state, pi_v);
+                self.cache.insert(game.clone(), pi_v);
                 pi_v
             }
         }

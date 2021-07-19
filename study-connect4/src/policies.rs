@@ -7,26 +7,6 @@ use tch::{
     Tensor,
 };
 
-fn to_float<const W: usize, const H: usize, const C: usize>(
-    x_bool: &[[[bool; W]; H]; C],
-) -> [[[f32; W]; H]; C] {
-    let mut x_f32 = [[[0.0; W]; H]; C];
-    for i in 0..C {
-        let bool_i = &x_bool[i];
-        let f32_i = &mut x_f32[i];
-        for j in 0..H {
-            let bool_j = &bool_i[j];
-            let f32_j = &mut f32_i[j];
-            for k in 0..W {
-                if bool_j[k] {
-                    f32_j[k] = 1.0;
-                }
-            }
-        }
-    }
-    x_f32
-}
-
 pub struct Connect4Net {
     c_1: nn::Conv2D,
     l_1: nn::Linear,
@@ -36,7 +16,7 @@ pub struct Connect4Net {
 impl NNPolicy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
     fn new(vs: &nn::VarStore) -> Self {
         let root = &vs.root();
-        let state_dims = Connect4::get_state_dims();
+        let state_dims = Connect4::DIMS;
         assert!(state_dims.len() == 4);
         assert!(&state_dims == &[1, 3, 7, 9]);
         Self {
@@ -72,14 +52,11 @@ impl NNPolicy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
 
 impl Policy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
     fn eval(&mut self, env: &Connect4) -> ([f32; Connect4::MAX_NUM_ACTIONS], f32) {
-        let state = env.state();
-        let xs = to_float(&state);
-        let t = tensor(&xs, &[1, 3, 7, 9], tch::Kind::Float);
+        let xs = env.features();
+        let t = tensor(&xs, Connect4::DIMS, tch::Kind::Float);
         let (logits, value) = self.forward(&t);
         let mut policy = [0.0f32; Connect4::MAX_NUM_ACTIONS];
-        logits
-            // .softmax(-1, tch::Kind::Float)
-            .copy_data(&mut policy, Connect4::MAX_NUM_ACTIONS);
+        logits.copy_data(&mut policy, Connect4::MAX_NUM_ACTIONS);
         let value = f32::from(&value).clamp(-1.0, 1.0);
         (policy, value)
     }
@@ -113,10 +90,6 @@ impl SlimC4Net {
 
 impl Policy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for SlimC4Net {
     fn eval(&mut self, env: &Connect4) -> ([f32; Connect4::MAX_NUM_ACTIONS], f32) {
-        let state = env.state();
-        let x = to_float(&state);
-        let (logits, value) = self.forward(&x);
-        // let policy = Softmax.apply_1d(&logits);
-        (logits, value)
+        self.forward(&env.features())
     }
 }

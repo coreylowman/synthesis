@@ -406,7 +406,7 @@ mod tests {
     use crate::game::HasTurnOrder;
     use crate::policies::RolloutPolicy;
 
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, std::hash::Hash, PartialOrd, Ord)]
     pub enum PlayerId {
         X,
         O,
@@ -445,7 +445,7 @@ mod tests {
         }
     }
 
-    #[derive(Debug, PartialEq, Eq, Clone)]
+    #[derive(Debug, PartialEq, Eq, std::hash::Hash, Clone)]
     struct TicTacToe {
         board: [[Option<PlayerId>; 3]; 3],
         player: PlayerId,
@@ -509,11 +509,12 @@ mod tests {
         type PlayerId = PlayerId;
         type Action = Action;
         type ActionIterator = ActionIterator;
-        type State = [[[bool; 3]; 3]; 3];
+        type Features = [[[f32; 3]; 3]; 3];
 
         const MAX_NUM_ACTIONS: usize = 9;
         const NAME: &'static str = "TicTacToe";
         const NUM_PLAYERS: usize = 2;
+        const DIMS: &'static [i64] = &[3, 3, 3];
 
         fn new() -> Self {
             Self {
@@ -521,10 +522,6 @@ mod tests {
                 player: PlayerId::X,
                 turn: 0,
             }
-        }
-
-        fn restore(state: &Self::State) -> Self {
-            Self::new()
         }
 
         fn player(&self) -> Self::PlayerId {
@@ -561,22 +558,18 @@ mod tests {
             self.is_over()
         }
 
-        fn get_state_dims() -> Vec<i64> {
-            vec![3, 3, 3]
-        }
-
-        fn state(&self) -> Self::State {
-            let mut s = [[[false; 3]; 3]; 3];
+        fn features(&self) -> Self::Features {
+            let mut s = [[[0.0; 3]; 3]; 3];
             for row in 0..3 {
                 for col in 0..3 {
                     if let Some(p) = self.board[row][col] {
                         if p == self.player {
-                            s[0][row][col] = true;
+                            s[0][row][col] = 1.0;
                         } else {
-                            s[1][row][col] = true;
+                            s[1][row][col] = 1.0;
                         }
                     } else {
-                        s[2][row][col] = true;
+                        s[2][row][col] = 1.0;
                     }
                 }
             }

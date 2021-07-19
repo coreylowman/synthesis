@@ -82,12 +82,19 @@ const fn won(bb: u64) -> bool {
     v + h + d1 + d2 > 0
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Connect4 {
     my_bb: u64,
     op_bb: u64,
     height: [u8; WIDTH],
     player: PlayerId,
+}
+
+impl std::hash::Hash for Connect4 {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write_u64(self.my_bb);
+        state.write_u64(self.op_bb);
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -147,7 +154,6 @@ impl Game<WIDTH> for Connect4 {
     type PlayerId = PlayerId;
     type Action = Column;
     type ActionIterator = FreeColumns;
-    type State = [[[bool; WIDTH]; HEIGHT]; 3];
 
     fn new() -> Self {
         Self {
@@ -156,40 +162,6 @@ impl Game<WIDTH> for Connect4 {
             height: [0; WIDTH],
             player: PlayerId::Red,
         }
-    }
-
-    fn restore(state: &Self::State) -> Self {
-        let mut my_bb = 0;
-        let mut op_bb = 0;
-        let mut height = [0; WIDTH];
-        let mut num = 0;
-        for row in 0..HEIGHT {
-            for col in 0..WIDTH {
-                let index = 1 << (row + HEIGHT * col);
-                if state[0][row][col] {
-                    my_bb |= index;
-                    height[col] = row as u8;
-                    num += 1;
-                } else if state[1][row][col] {
-                    op_bb |= index;
-                    height[col] = row as u8;
-                    num += 1;
-                };
-            }
-        }
-        let player = if num % 2 == 0 {
-            PlayerId::Red
-        } else {
-            PlayerId::Black
-        };
-        let o = Self {
-            my_bb,
-            op_bb,
-            height,
-            player,
-        };
-        assert_eq!(o.state(), *state);
-        o
     }
 
     fn player(&self) -> Self::PlayerId {
@@ -234,21 +206,19 @@ impl Game<WIDTH> for Connect4 {
         self.is_over()
     }
 
-    fn get_state_dims() -> Vec<i64> {
-        vec![1, 3, HEIGHT as i64, WIDTH as i64]
-    }
-
-    fn state(&self) -> Self::State {
-        let mut s = [[[false; WIDTH]; HEIGHT]; 3];
+    const DIMS: &'static [i64] = &[1, 3, HEIGHT as i64, WIDTH as i64];
+    type Features = [[[f32; WIDTH]; HEIGHT]; 3];
+    fn features(&self) -> Self::Features {
+        let mut s = Self::Features::default();
         for row in 0..HEIGHT {
             for col in 0..WIDTH {
                 let index = 1 << (row + HEIGHT * col);
                 if self.my_bb & index != 0 {
-                    s[0][row][col] = true;
+                    s[0][row][col] = 1.0;
                 } else if self.op_bb & index != 0 {
-                    s[1][row][col] = true;
+                    s[1][row][col] = 1.0;
                 } else {
-                    s[2][row][col] = true;
+                    s[2][row][col] = 1.0;
                 }
             }
         }
@@ -305,6 +275,7 @@ mod tests {
         assert!(!game.step(&Column(1)));
         assert!(game.step(&Column(0)));
         assert!(game.is_over());
+        assert_eq!(game.winner(), Some(PlayerId::Red));
         assert_eq!(game.reward(game.player()), -1.0);
         assert_eq!(game.player(), PlayerId::Black);
         assert_eq!(game.reward(PlayerId::Black), -1.0);
@@ -323,6 +294,7 @@ mod tests {
         assert!(!game.step(&Column(2)));
         assert!(game.step(&Column(1)));
         assert!(game.is_over());
+        assert_eq!(game.winner(), Some(PlayerId::Black));
         assert_eq!(game.reward(game.player()), -1.0);
         assert_eq!(game.player(), PlayerId::Red);
         assert_eq!(game.reward(PlayerId::Black), 1.0);
@@ -437,6 +409,7 @@ mod tests {
         assert!(game.iter_actions().position(|c| c == Column(8)).is_some());
         assert!(game.step(&Column(8)));
         assert!(game.is_over());
+        assert_eq!(game.winner(), None);
         assert_eq!(game.reward(PlayerId::Red), 0.0);
         assert_eq!(game.reward(PlayerId::Black), 0.0);
     }

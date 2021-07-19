@@ -8,7 +8,6 @@ use indicatif::{ProgressBar, ProgressStyle};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use rand::{distributions::Distribution, distributions::WeightedIndex, Rng};
-use std::collections::HashMap;
 use std::default::Default;
 use tch::{
     kind::Kind,
@@ -35,7 +34,7 @@ pub fn learner<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
     let mut opt = Adam::default().build(&vs, cfg.lr)?;
     opt.set_weight_decay(cfg.weight_decay);
 
-    let mut dims = G::get_state_dims();
+    let mut dims = G::DIMS.to_owned();
 
     vs.save(models_dir.join(String::from("model_0.ot")))?;
 
@@ -56,7 +55,7 @@ pub fn learner<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
             dedup.vs.len()
         );
         dims[0] = dedup.vs.len() as i64;
-        let states = tensor(&dedup.states, &dims, Kind::Bool).to_kind(tch::Kind::Float);
+        let states = tensor(&dedup.states, &dims, Kind::Float);
         let target_pis = tensor(&dedup.pis, &[dims[0], N as i64], Kind::Float);
         let target_vs = tensor(&dedup.vs, &[dims[0], 1], Kind::Float);
 
@@ -112,10 +111,7 @@ fn gather_experience<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
     rng: &mut R,
     buffer: &mut ReplayBuffer<G, N>,
 ) {
-    let mut cached_policy = PolicyWithCache {
-        policy,
-        cache: HashMap::with_capacity(100 * cfg.games_per_train),
-    };
+    let mut cached_policy = PolicyWithCache::with_capacity(100 * cfg.games_per_train, policy);
 
     buffer.keep_last_n_games(cfg.games_to_keep - cfg.games_per_train);
     let bar = ProgressBar::new(cfg.games_per_train as u64);
@@ -170,7 +166,7 @@ fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
 
         // store in buffer
         mcts.extract_search_policy(&mut search_policy);
-        buffer.add(&game.state(), &search_policy, 0.0);
+        buffer.add(&game, &search_policy, 0.0);
         state_infos.push(StateInfo {
             turn: num_turns + 1,
             t: 0.0,

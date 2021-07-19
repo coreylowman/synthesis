@@ -4,7 +4,6 @@ use crate::mcts::MCTS;
 use crate::policies::*;
 use crate::utils::*;
 use rand::prelude::{Rng, SeedableRng, StdRng};
-use std::collections::HashMap;
 use tch::nn::VarStore;
 
 pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
@@ -55,10 +54,7 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
         let mut vs = VarStore::new(tch::Device::Cpu);
         let policy = P::new(&vs);
         vs.load(models_dir.join(&name))?;
-        let mut policy = OwnedPolicyWithCache {
-            policy,
-            cache: HashMap::with_capacity(100_000),
-        };
+        let mut policy = OwnedPolicyWithCache::with_capacity(100_000, policy);
 
         let result = eval_against_random(&cfg, &mut policy, first_player);
         add_pgn_result(&mut pgn, &name, &String::from("Random"), result)?;

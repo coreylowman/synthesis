@@ -90,12 +90,14 @@ pub fn tensor<T>(data: &[T], dims: &[i64], kind: tch::Kind) -> Tensor {
 }
 
 pub struct FlatBatch<G: Game<N>, const N: usize> {
-    pub states: Vec<G::State>,
+    pub states: Vec<G::Features>,
     pub pis: Vec<[f32; N]>,
     pub vs: Vec<f32>,
 }
 
-struct StateStatistics<const N: usize> {
+#[derive(Debug)]
+struct StateStatistics<G: Game<N>, const N: usize> {
+    state: G::Features,
     sum_pi: [f32; N],
     sum_v: f32,
     num: u32,
@@ -105,7 +107,8 @@ pub struct ReplayBuffer<G: Game<N>, const N: usize> {
     game_id: usize,
     steps: usize,
     game_ids: Vec<usize>,
-    pub states: Vec<G::State>,
+    pub games: Vec<G>,
+    pub states: Vec<G::Features>,
     pub pis: Vec<[f32; N]>,
     pub vs: Vec<f32>,
 }
@@ -116,6 +119,7 @@ impl<G: Game<N>, const N: usize> ReplayBuffer<G, N> {
             game_id: 0,
             steps: 0,
             game_ids: Vec::with_capacity(n),
+            games: Vec::with_capacity(n),
             states: Vec::with_capacity(n),
             pis: Vec::with_capacity(n),
             vs: Vec::with_capacity(n),
@@ -144,10 +148,11 @@ impl<G: Game<N>, const N: usize> ReplayBuffer<G, N> {
         self.vs.len()
     }
 
-    pub fn add(&mut self, state: &G::State, pi: &[f32; N], v: f32) {
+    pub fn add(&mut self, game: &G, pi: &[f32; N], v: f32) {
         self.game_ids.push(self.game_id);
         self.steps += 1;
-        self.states.push(state.clone());
+        self.games.push(game.clone());
+        self.states.push(game.features());
         self.pis.push(*pi);
         self.vs.push(v);
     }
@@ -168,6 +173,7 @@ impl<G: Game<N>, const N: usize> ReplayBuffer<G, N> {
         }
         if let Some(max_ind) = max_ind_to_remove {
             drop(self.game_ids.drain(0..=max_ind));
+            drop(self.games.drain(0..=max_ind));
             drop(self.states.drain(0..=max_ind));
             drop(self.pis.drain(0..=max_ind));
             drop(self.vs.drain(0..=max_ind));
@@ -176,11 +182,13 @@ impl<G: Game<N>, const N: usize> ReplayBuffer<G, N> {
     }
 
     pub fn deduplicate(&self) -> FlatBatch<G, N> {
-        let mut statistics = HashMap::with_capacity(100 * self.game_ids.len());
+        let mut statistics: HashMap<G, StateStatistics<G, N>> =
+            HashMap::with_capacity(self.game_ids.len());
         for i in 0..self.game_ids.len() {
             let stats = statistics
-                .entry(self.states[i].clone())
+                .entry(self.games[i].clone())
                 .or_insert(StateStatistics {
+                    state: self.states[i].clone(),
                     sum_pi: [0.0; N],
                     sum_v: 0.0,
                     num: 0,
@@ -195,13 +203,13 @@ impl<G: Game<N>, const N: usize> ReplayBuffer<G, N> {
         let mut states = Vec::with_capacity(statistics.len());
         let mut pis = Vec::with_capacity(statistics.len());
         let mut vs = Vec::with_capacity(statistics.len());
-        for (state, stats) in statistics.iter() {
+        for (_, stats) in statistics.iter() {
             let mut avg_pi = [0.0; N];
             for i in 0..N {
                 avg_pi[i] = stats.sum_pi[i] / stats.num as f32;
             }
             let avg_v = stats.sum_v / stats.num as f32;
-            states.push(state.clone());
+            states.push(stats.state.clone());
             pis.push(avg_pi);
             vs.push(avg_v);
         }
