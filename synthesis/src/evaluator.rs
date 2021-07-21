@@ -96,14 +96,7 @@ fn eval_against_random<G: Game<N>, P: Policy<G, N>, const N: usize>(
     let mut opponent = StdRng::seed_from_u64(0);
     loop {
         let action = if game.player() == player {
-            MCTS::exploit(
-                cfg.num_explores,
-                cfg.c_puct,
-                cfg.solve,
-                cfg.fpu,
-                policy,
-                game.clone(),
-            )
+            MCTS::exploit(cfg.num_explores, cfg.learner_mcts_cfg, policy, game.clone())
         } else {
             let num_actions = game.iter_actions().count() as u8;
             let i = opponent.gen_range(0..num_actions) as usize;
@@ -130,20 +123,11 @@ fn eval_against_vanilla_mcts<G: Game<N>, P: Policy<G, N>, const N: usize>(
     let mut rollout_policy = RolloutPolicy { rng: &mut rng };
     loop {
         let action = if game.player() == player {
-            MCTS::exploit(
-                cfg.num_explores,
-                cfg.c_puct,
-                cfg.solve,
-                cfg.fpu,
-                policy,
-                game.clone(),
-            )
+            MCTS::exploit(cfg.num_explores, cfg.learner_mcts_cfg, policy, game.clone())
         } else {
             MCTS::exploit(
                 opponent_explores,
-                cfg.c_puct,
-                cfg.solve,
-                cfg.fpu,
+                cfg.baseline_mcts_cfg,
                 &mut rollout_policy,
                 game.clone(),
             )
@@ -174,9 +158,7 @@ fn mcts_vs_mcts<G: Game<N>, const N: usize>(
             } else {
                 p2_explores
             },
-            cfg.c_puct,
-            cfg.solve,
-            cfg.fpu,
+            cfg.baseline_mcts_cfg,
             &mut rollout_policy,
             game.clone(),
         );

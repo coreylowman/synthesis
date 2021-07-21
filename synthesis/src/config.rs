@@ -8,6 +8,19 @@ pub enum ValueTarget {
     QtoZ,      // interpolate from Q to Z based on turns
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+pub enum MCTSExploration {
+    UCT { c: f32 },
+    PUCT { c: f32 },
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+pub struct MCTSConfig {
+    pub exploration: MCTSExploration,
+    pub solve: bool,
+    pub fpu: f32,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LearningConfig {
     // general params
@@ -35,8 +48,6 @@ pub struct LearningConfig {
     pub noisy_explore: bool,
     pub noise_weight: f32,
 
-    // mcts params
-    pub c_puct: f32,
-    pub solve: bool,
-    pub fpu: f32,
+    pub learner_mcts_cfg: MCTSConfig,
+    pub baseline_mcts_cfg: MCTSConfig,
 }

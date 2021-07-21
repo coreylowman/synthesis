@@ -29,15 +29,15 @@ pub fn learner<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
     tch::manual_seed(cfg.seed as i64);
     let mut rng = StdRng::seed_from_u64(cfg.seed);
 
+    let batch_mean = 1.0 / (cfg.batch_size as f32);
+
     let vs = VarStore::new(tch::Device::Cpu);
     let mut policy = P::new(&vs);
     let mut opt = Adam::default().build(&vs, cfg.lr)?;
     opt.set_weight_decay(cfg.weight_decay);
-
-    let mut dims = G::DIMS.to_owned();
-
     vs.save(models_dir.join(String::from("model_0.ot")))?;
 
+    let mut dims = G::DIMS.to_owned();
     let mut buffer = ReplayBuffer::new(cfg.buffer_size);
 
     for i_iter in 0..cfg.num_iterations {
@@ -49,17 +49,11 @@ pub fn learner<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
 
         // convert to tensors
         let dedup = buffer.deduplicate();
-        println!(
-            "Deduplicated {} -> {} steps",
-            buffer.vs.len(),
-            dedup.vs.len()
-        );
+        println!("Dedup {} -> {} steps", buffer.vs.len(), dedup.vs.len());
         dims[0] = dedup.vs.len() as i64;
         let states = tensor(&dedup.states, &dims, Kind::Float);
         let target_pis = tensor(&dedup.pis, &[dims[0], N as i64], Kind::Float);
         let target_vs = tensor(&dedup.vs, &[dims[0], 1], Kind::Float);
-
-        let batch_mean = 1.0 / (cfg.batch_size as f32);
 
         // train
         for _i_epoch in 0..cfg.num_epochs {
@@ -151,9 +145,7 @@ fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
     while !is_over {
         let mut mcts = MCTS::with_capacity(
             cfg.num_explores + 1,
-            cfg.c_puct,
-            cfg.solve,
-            cfg.fpu,
+            cfg.learner_mcts_cfg,
             policy,
             game.clone(),
         );

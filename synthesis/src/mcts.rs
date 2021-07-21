@@ -1,3 +1,4 @@
+use crate::config::{MCTSConfig, MCTSExploration};
 use crate::game::{Game, Outcome};
 use crate::policies::Policy;
 use rand::{distributions::Distribution, Rng};
@@ -80,33 +81,17 @@ pub struct MCTS<'a, G: Game<N>, P: Policy<G, N>, const N: usize> {
     offset: NodeId,
     nodes: Vec<Node<G, N>>,
     policy: &'a mut P,
-    c_puct: f32,
-    solve: bool,
-    fpu: f32,
+    cfg: MCTSConfig,
 }
 
 impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
-    pub fn exploit(
-        explores: usize,
-        c_puct: f32,
-        solve: bool,
-        fpu: f32,
-        policy: &'a mut P,
-        game: G,
-    ) -> G::Action {
-        let mut mcts = Self::with_capacity(explores + 1, c_puct, solve, fpu, policy, game);
+    pub fn exploit(explores: usize, cfg: MCTSConfig, policy: &'a mut P, game: G) -> G::Action {
+        let mut mcts = Self::with_capacity(explores + 1, cfg, policy, game);
         mcts.explore_n(explores);
         mcts.best_action()
     }
 
-    pub fn with_capacity(
-        capacity: usize,
-        c_puct: f32,
-        solve: bool,
-        fpu: f32,
-        policy: &'a mut P,
-        game: G,
-    ) -> Self {
+    pub fn with_capacity(capacity: usize, cfg: MCTSConfig, policy: &'a mut P, game: G) -> Self {
         let mut nodes = Vec::with_capacity(capacity);
         nodes.push(Node::unvisited(0, game, false, None, 0, 0.0));
         let mut mcts = Self {
@@ -114,9 +99,7 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
             offset: 0,
             nodes,
             policy,
-            c_puct,
-            solve,
-            fpu,
+            cfg,
         };
         let (value, any_solved) = mcts.visit(mcts.root);
         mcts.backprop(mcts.root, value, any_solved);
@@ -273,22 +256,29 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
     fn select_best_child(&mut self, node_id: NodeId) -> NodeId {
         let node = self.node(node_id);
 
-        let visits = node.num_visits.sqrt();
-
         let mut best_child_id = 0;
         let mut best_value = f32::NEG_INFINITY;
         for child_ind in 0..node.num_children {
             let child_id = node.first_child + child_ind as u32;
             let child = self.node(child_id);
             let value = if child.is_unvisited() {
-                self.fpu
+                self.cfg.fpu
             } else {
                 match child.solution {
                     Some(outcome) => outcome.reversed().value(),
                     None => {
                         let q = -child.cum_value / child.num_visits;
-                        let u = child.action_prob * visits / (1.0 + child.num_visits);
-                        q + self.c_puct * u
+                        let u = match self.cfg.exploration {
+                            MCTSExploration::UCT { c } => {
+                                let visits = (c * node.num_visits.ln()).sqrt();
+                                visits / child.num_visits.sqrt()
+                            }
+                            MCTSExploration::PUCT { c } => {
+                                let visits = node.num_visits.sqrt();
+                                c * child.action_prob * visits / (1.0 + child.num_visits)
+                            }
+                        };
+                        q + u
                     }
                 }
             };
@@ -350,7 +340,7 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
             let node = self.node(node_id);
             let parent = node.parent;
 
-            if self.solve && solved && node.is_unsolved() {
+            if self.cfg.solve && solved && node.is_unsolved() {
                 let mut all_solved = true;
                 let mut worst_solution = None;
                 for child in self.children_of(node) {
@@ -603,8 +593,16 @@ mod tests {
         let mut game = TicTacToe::new();
         game.step(&Action { row: 0, col: 0 });
         game.step(&Action { row: 0, col: 2 });
-        let mut mcts =
-            MCTS::with_capacity(1601, 2.0, true, f32::INFINITY, &mut policy, game.clone());
+        let mut mcts = MCTS::with_capacity(
+            1601,
+            MCTSConfig {
+                exploration: MCTSExploration::PUCT { c: 2.0 },
+                solve: true,
+                fpu: f32::INFINITY,
+            },
+            &mut policy,
+            game.clone(),
+        );
         while mcts.node(mcts.root).solution.is_none() {
             mcts.explore();
         }
@@ -637,8 +635,16 @@ mod tests {
         game.step(&Action { row: 0, col: 0 });
         game.step(&Action { row: 0, col: 2 });
         game.step(&Action { row: 2, col: 0 });
-        let mut mcts =
-            MCTS::with_capacity(1601, 2.0, true, f32::INFINITY, &mut policy, game.clone());
+        let mut mcts = MCTS::with_capacity(
+            1601,
+            MCTSConfig {
+                exploration: MCTSExploration::PUCT { c: 2.0 },
+                solve: true,
+                fpu: f32::INFINITY,
+            },
+            &mut policy,
+            game.clone(),
+        );
         while mcts.node(mcts.root).solution.is_none() {
             mcts.explore();
         }
@@ -673,8 +679,16 @@ mod tests {
         let mut game = TicTacToe::new();
         game.step(&Action { row: 0, col: 0 });
         game.step(&Action { row: 1, col: 1 });
-        let mut mcts =
-            MCTS::with_capacity(1601, 2.0, true, f32::INFINITY, &mut policy, game.clone());
+        let mut mcts = MCTS::with_capacity(
+            1601,
+            MCTSConfig {
+                exploration: MCTSExploration::PUCT { c: 2.0 },
+                solve: true,
+                fpu: f32::INFINITY,
+            },
+            &mut policy,
+            game.clone(),
+        );
         while mcts.node(mcts.root).solution.is_none() {
             mcts.explore();
         }
@@ -708,8 +722,16 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(0);
         let mut policy = RolloutPolicy { rng: &mut rng };
         let game = TicTacToe::new();
-        let mut mcts =
-            MCTS::with_capacity(1601, 2.0, true, f32::INFINITY, &mut policy, game.clone());
+        let mut mcts = MCTS::with_capacity(
+            1601,
+            MCTSConfig {
+                exploration: MCTSExploration::PUCT { c: 2.0 },
+                solve: true,
+                fpu: f32::INFINITY,
+            },
+            &mut policy,
+            game.clone(),
+        );
         let mut rng2 = StdRng::seed_from_u64(0);
 
         let mut total = 0.0;
