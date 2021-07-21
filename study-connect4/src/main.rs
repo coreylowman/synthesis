@@ -7,36 +7,44 @@ use synthesis::prelude::*;
 
 fn learn<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // TODO try 1600 explores and see if still stuck at 400
-    // TODO try noisy_explore with noise_weight of 0.0625
-    // TODO try c_puct 1.0
-    // TODO why does num_random_actions > 0 affect things so much?
-
     let cfg = LearningConfig {
         seed: 0,
         logs: train_dir("./_logs", G::NAME)?,
 
         lr: 1e-3,
-        weight_decay: 0.0,
+        weight_decay: 1e-4,
         num_iterations: 200,
         num_epochs: 20,
-        value_target: ValueTarget::Interpolate,
+        value_target: ValueTarget::QtoZ,
 
         batch_size: 64,
         buffer_size: 256_000,
-        games_to_keep: 8000,
+        games_to_keep: 20000,
         games_per_train: 2000,
 
-        num_explores: 800,
-        num_random_actions: 1,
+        num_explores: 1600,
+        num_random_actions: 2,
         sample_action_until: 25,
         alpha: 10.0 / (N as f32),
         noisy_explore: true,
         noise_weight: 0.25,
-        c_puct: 1.0,
-        solve: true,
-        fpu: f32::INFINITY,
+
+        learner_mcts_cfg: MCTSConfig {
+            exploration: MCTSExploration::PUCT { c: 1.0 },
+            solve: true,
+            fpu: 1.0,
+        },
+
+        baseline_mcts_cfg: MCTSConfig {
+            exploration: MCTSExploration::UCT { c: 2.0 },
+            solve: true,
+            fpu: f32::INFINITY,
+        },
     };
+
+    // TODO try w/d/l & dot with [1,0,-1]
+    // TODO try w/d/l & take argmax
+    // TODO generate games using 50% latest & 50% best
 
     tch::set_num_threads(2);
     tch::set_num_interop_threads(2);

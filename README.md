@@ -86,3 +86,5 @@ https://www.nature.com/articles/nature24270.epdf
 https://dselsam.github.io/posts/2018-06-06-issues-with-alpha-zero.html
 https://github.com/deepmind/open_spiel/blob/master/open_spiel/algorithms/alpha_zero_torch/alpha_zero.cc
 https://lczero.org/blog/2018/12/alphazero-paper-and-lc0-v0191/
+http://proceedings.mlr.press/v97/tian19a/tian19a.pdf
+https://link.springer.com/content/pdf/10.1007/s00521-021-05928-5.pdf

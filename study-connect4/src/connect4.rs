@@ -206,8 +206,8 @@ impl Game<WIDTH> for Connect4 {
         self.is_over()
     }
 
-    const DIMS: &'static [i64] = &[1, 3, HEIGHT as i64, WIDTH as i64];
-    type Features = [[[f32; WIDTH]; HEIGHT]; 3];
+    const DIMS: &'static [i64] = &[1, 1, HEIGHT as i64, WIDTH as i64];
+    type Features = [[[f32; WIDTH]; HEIGHT]; 1];
     fn features(&self) -> Self::Features {
         let mut s = Self::Features::default();
         for row in 0..HEIGHT {
@@ -216,10 +216,16 @@ impl Game<WIDTH> for Connect4 {
                 if self.my_bb & index != 0 {
                     s[0][row][col] = 1.0;
                 } else if self.op_bb & index != 0 {
-                    s[1][row][col] = 1.0;
+                    s[0][row][col] = -1.0;
                 } else {
-                    s[2][row][col] = 1.0;
+                    s[0][row][col] = -0.1;
                 }
+            }
+        }
+        for col in 0..WIDTH {
+            let h = self.height[col] as usize;
+            if h < HEIGHT {
+                s[0][h][col] = 0.1;
             }
         }
         s
