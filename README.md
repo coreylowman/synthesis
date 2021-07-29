@@ -35,6 +35,7 @@ What's implemented:
 
 ###### General
 
+- [ ] Score Bounded solver https://www.lamsade.dauphine.fr/~cazenave/papers/mcsolver.pdf
 - [ ] Explore tree reuse in self play games
 - [ ] Early termination in self play games if solver figures out if outcome is decided
 - [ ] Order actions by action prob while expanding a node
