@@ -140,44 +140,12 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
     }
 
     pub fn extract_search_policy(&self, search_policy: &mut [f32; N]) {
-        search_policy.fill(0.0);
         let root = self.node(self.root);
         let mut total = 0.0;
-        let mut any_wins = false;
-        let mut any_draws = false;
-        let mut any_unsolved = false;
+        search_policy.fill(0.0);
         for child in self.children_of(root) {
-            match child.solution {
-                Some(Outcome::Win) => {}
-                Some(Outcome::Draw) => any_draws = true,
-                Some(Outcome::Lose) => any_wins = true,
-                None => any_unsolved = true,
-            }
-        }
-        let (win_value, draw_value, lose_value, unsolved_mask) = if any_wins {
-            (1.0, 0.0, 0.0, 0.0)
-        } else if any_draws {
-            // TODO don't mask out unsolved nodes
-            (0.0, 1.0, 0.0, 0.0)
-        } else if !any_unsolved {
-            // all losses
-            (0.0, 0.0, 1.0, 0.0)
-        } else {
-            // some lost, some unsolved OR none solved
-            (0.0, 0.0, 0.0, 1.0)
-        };
-        for child in self.children_of(root) {
-            if child.is_unvisited() {
-                continue;
-            }
-            let value = match child.solution {
-                Some(Outcome::Lose) => win_value,
-                Some(Outcome::Draw) => draw_value,
-                Some(Outcome::Win) => lose_value,
-                None => unsolved_mask * child.num_visits,
-            };
-            search_policy[child.action as usize] = value;
-            total += value;
+            search_policy[child.action as usize] = child.num_visits;
+            total += child.num_visits;
         }
         for i in 0..N {
             search_policy[i] /= total;
@@ -186,7 +154,6 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
 
     pub fn extract_avg_value(&self) -> f32 {
         let root = self.node(self.root);
-        // TODO should this be max child value?
         match root.solution {
             Some(outcome) => outcome.value(),
             None => root.cum_value / root.num_visits,
@@ -254,20 +221,18 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
     fn select_best_child(&mut self, node_id: NodeId) -> NodeId {
         let node = self.node(node_id);
 
-        let mut best_child_id = 0;
+        let mut best_child_id = None;
         let mut best_value = f32::NEG_INFINITY;
         for child_ind in 0..node.num_children {
             let child_id = node.first_child + child_ind as u32;
             let child = self.node(child_id);
             let value = if child.is_unvisited() {
-                self.cfg.fpu
-            } else if let Some(outcome) = child.solution {
-                match outcome {
-                    Outcome::Win | Outcome::Draw => continue,
-                    Outcome::Lose => f32::INFINITY,
-                }
+                self.cfg.fpu + child.action_prob
             } else {
-                let q = -child.cum_value / child.num_visits;
+                let q = match child.solution {
+                    Some(outcome) => outcome.reversed().value(),
+                    None => -child.cum_value / child.num_visits,
+                };
                 let u = match self.cfg.exploration {
                     MCTSExploration::UCT { c } => {
                         let visits = (c * node.num_visits.ln()).sqrt();
@@ -280,12 +245,12 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
                 };
                 q + u
             };
-            if value > best_value {
-                best_child_id = child_id;
+            if best_child_id.is_none() || value > best_value {
+                best_child_id = Some(child_id);
                 best_value = value;
             }
         }
-        best_child_id
+        best_child_id.unwrap()
     }
 
     fn visit(&mut self, node_id: NodeId) -> (f32, bool) {

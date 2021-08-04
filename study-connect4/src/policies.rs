@@ -7,6 +7,7 @@ pub struct Connect4Net {
     l_1: nn::Linear,
     l_2: nn::Linear,
     l_3: nn::Linear,
+    l_4: nn::Linear,
 }
 
 impl NNPolicy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
@@ -16,9 +17,10 @@ impl NNPolicy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
         assert!(state_dims.len() == 4);
         assert!(&state_dims == &[1, 1, 7, 9]);
         Self {
-            l_1: nn::linear(root / "l_1", 63, 48, Default::default()),
-            l_2: nn::linear(root / "l_2", 48, 32, Default::default()),
-            l_3: nn::linear(root / "l_3", 32, 10, Default::default()),
+            l_1: nn::linear(root / "l_1", 63, 128, Default::default()),
+            l_2: nn::linear(root / "l_2", 128, 94, Default::default()),
+            l_3: nn::linear(root / "l_3", 94, 64, Default::default()),
+            l_4: nn::linear(root / "l_4", 64, 10, Default::default()),
         }
     }
 
@@ -29,7 +31,9 @@ impl NNPolicy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
             .relu()
             .apply(&self.l_2)
             .relu()
-            .apply(&self.l_3);
+            .apply(&self.l_3)
+            .relu()
+            .apply(&self.l_4);
         let mut ts = xs.split_with_sizes(&[9, 1], -1);
         let value = ts.pop().unwrap();
         let logits = ts.pop().unwrap();

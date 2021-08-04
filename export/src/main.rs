@@ -5,11 +5,36 @@ use std::io::Write;
 use std::path::Path;
 use tch;
 
+pub fn f32_to_bf16(value: f32) -> u16 {
+    // Convert to raw bytes
+    let x = value.to_bits();
+
+    // check for NaN
+    if x & 0x7FFF_FFFFu32 > 0x7F80_0000u32 {
+        // Keep high part of current mantissa but also set most significiant mantissa bit
+        return ((x >> 16) | 0x0040u32) as u16;
+    }
+
+    // round and shift
+    let round_bit = 0x0000_8000u32;
+    if (x & round_bit) != 0 && (x & (3 * round_bit - 1)) != 0 {
+        (x >> 16) as u16 + 1
+    } else {
+        (x >> 16) as u16
+    }
+}
+
 fn serialize_tensor(t: &tch::Tensor) -> String {
     let f32s: Vec<f32> = t.into();
     let u8s: Vec<u8> = f32s
         .iter()
-        .map(|f| f.to_be_bytes().iter().cloned().collect::<Vec<u8>>())
+        .map(|f| {
+            f32_to_bf16(*f)
+                .to_be_bytes()
+                .iter()
+                .cloned()
+                .collect::<Vec<u8>>()
+        })
         .flatten()
         .collect();
     base65536::encode(&u8s)

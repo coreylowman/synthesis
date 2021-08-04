@@ -36,9 +36,7 @@ What's implemented:
 ###### General
 
 - [ ] Score Bounded solver https://www.lamsade.dauphine.fr/~cazenave/papers/mcsolver.pdf
-- [ ] Explore tree reuse in self play games
-- [ ] Early termination in self play games if solver figures out if outcome is decided
-- [ ] Order actions by action prob while expanding a node
+- [ ] Regularized Policy Optimization https://arxiv.org/abs/2007.12509
 - [ ] Combine UCT + PUCT terms (as in http://kth.diva-portal.org/smash/get/diva2:1514096/FULLTEXT01.pdf)
 - [ ] Schedules for various parameters
   - [ ] sample_actions_until
@@ -59,7 +57,6 @@ What's implemented:
 
 ###### Quality of life
 - [ ] save replay buffer in addition to weights so you can resume training
-- [ ] subdivide config into different config structs
 
 ###### Performance
 - [x] compiler flags (LTO=fat, codegen-units=1, target=native)

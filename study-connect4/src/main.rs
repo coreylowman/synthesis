@@ -20,17 +20,17 @@ fn learn<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
         batch_size: 64,
         buffer_size: 256_000,
         games_to_keep: 20000,
-        games_per_train: 2000,
+        games_per_train: 1000,
 
         num_explores: 1600,
-        num_random_actions: 2,
+        num_random_actions: 0,
         sample_action_until: 25,
         alpha: 10.0 / (N as f32),
         noisy_explore: true,
         noise_weight: 0.25,
 
         learner_mcts_cfg: MCTSConfig {
-            exploration: MCTSExploration::PUCT { c: 1.0 },
+            exploration: MCTSExploration::PUCT { c: 2.0 },
             solve: true,
             fpu: 1.0,
         },
