@@ -14,25 +14,22 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
     let mut pgn = std::fs::File::create(&pgn_path)?;
     let _guard = tch::no_grad_guard();
     let first_player = G::new().player();
-    let all_explores = [
-        100, 200, 400, 800, 1600, 2400, 3200, 4800, 6400, 9600, 12800,
-    ];
 
-    for i in 0..all_explores.len() {
-        for j in 0..all_explores.len() {
+    for i in 0..cfg.baseline_explores.len() {
+        for j in 0..cfg.baseline_explores.len() {
             if i == j {
                 continue;
             }
             for seed in 0..50 {
                 add_pgn_result(
                     &mut pgn,
-                    &format!("VanillaMCTS{}", all_explores[i]),
-                    &format!("VanillaMCTS{}", all_explores[j]),
+                    &format!("VanillaMCTS{}", cfg.baseline_explores[i]),
+                    &format!("VanillaMCTS{}", cfg.baseline_explores[j]),
                     mcts_vs_mcts::<G, N>(
                         &cfg,
                         first_player,
-                        all_explores[i],
-                        all_explores[j],
+                        cfg.baseline_explores[i],
+                        cfg.baseline_explores[j],
                         seed,
                     ),
                 )?;
@@ -61,7 +58,7 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
         let result = eval_against_random(&cfg, &mut policy, first_player.next());
         add_pgn_result(&mut pgn, &String::from("Random"), &name, result)?;
 
-        for &explores in &all_explores {
+        for &explores in cfg.baseline_explores.iter() {
             let op_name = format!("VanillaMCTS{}", explores);
             for seed in 0..10 {
                 let result =

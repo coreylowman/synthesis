@@ -33,7 +33,7 @@ pub fn learner<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
 
     let vs = VarStore::new(tch::Device::Cpu);
     let mut policy = P::new(&vs);
-    let mut opt = Adam::default().build(&vs, cfg.lr)?;
+    let mut opt = Adam::default().build(&vs, cfg.lr_schedule[0].1)?;
     opt.set_weight_decay(cfg.weight_decay);
     vs.save(models_dir.join(String::from("model_0.ot")))?;
 
@@ -54,6 +54,16 @@ pub fn learner<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
         let states = tensor(&dedup.states, &dims, Kind::Float);
         let target_pis = tensor(&dedup.pis, &[dims[0], N as i64], Kind::Float);
         let target_vs = tensor(&dedup.vs, &[dims[0], 1], Kind::Float);
+
+        let lr = cfg
+            .lr_schedule
+            .iter()
+            .filter(|(i, _lr)| *i <= i_iter + 1)
+            .last()
+            .unwrap()
+            .1;
+        opt.set_lr(lr);
+        println!("Using lr={}", lr);
 
         // train
         for _i_epoch in 0..cfg.num_epochs {

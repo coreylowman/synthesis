@@ -11,7 +11,7 @@ fn learn<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
         seed: 0,
         logs: train_dir("./_logs", G::NAME)?,
 
-        lr: 1e-3,
+        lr_schedule: vec![(1, 1e-3)], // TODO (40, 1e-4), (80, 1e-5)
         weight_decay: 1e-4,
         num_iterations: 200,
         num_epochs: 20,
@@ -24,15 +24,15 @@ fn learn<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
 
         num_explores: 1600,
         num_random_actions: 0,
-        sample_action_until: 25,
+        sample_action_until: 25, // TODO 63 (max turns)
         alpha: 10.0 / (N as f32),
         noisy_explore: true,
         noise_weight: 0.25,
 
         learner_mcts_cfg: MCTSConfig {
-            exploration: MCTSExploration::PUCT { c: 2.0 },
+            exploration: MCTSExploration::PUCT { c: 2.0 }, // TODO 1.0
             solve: true,
-            fpu: 1.0,
+            fpu: 1.0, // TODO 0.0
         },
 
         baseline_mcts_cfg: MCTSConfig {
@@ -40,6 +40,10 @@ fn learn<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
             solve: true,
             fpu: f32::INFINITY,
         },
+
+        baseline_explores: vec![
+            100, 200, 400, 800, 1600, 2400, 3200, 4800, 6400, 9600, 12800, 25600, 51200,
+        ],
     };
 
     // TODO try w/d/l & dot with [1,0,-1]

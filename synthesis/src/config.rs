@@ -28,7 +28,7 @@ pub struct LearningConfig {
     pub logs: std::path::PathBuf,
 
     // training params
-    pub lr: f64,
+    pub lr_schedule: Vec<(usize, f64)>,
     pub weight_decay: f64,
     pub num_iterations: usize,
     pub num_epochs: usize,
@@ -50,4 +50,6 @@ pub struct LearningConfig {
 
     pub learner_mcts_cfg: MCTSConfig,
     pub baseline_mcts_cfg: MCTSConfig,
+
+    pub baseline_explores: Vec<usize>,
 }
