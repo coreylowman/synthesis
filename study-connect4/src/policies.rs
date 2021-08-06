@@ -18,8 +18,8 @@ impl NNPolicy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
         assert!(&state_dims == &[1, 1, 7, 9]);
         Self {
             l_1: nn::linear(root / "l_1", 63, 128, Default::default()),
-            l_2: nn::linear(root / "l_2", 128, 94, Default::default()),
-            l_3: nn::linear(root / "l_3", 94, 64, Default::default()),
+            l_2: nn::linear(root / "l_2", 128, 96, Default::default()),
+            l_3: nn::linear(root / "l_3", 96, 64, Default::default()),
             l_4: nn::linear(root / "l_4", 64, 10, Default::default()),
         }
     }

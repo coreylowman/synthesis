@@ -143,6 +143,7 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
         let root = self.node(self.root);
         let mut total = 0.0;
         search_policy.fill(0.0);
+        // TODO masked wins only => unsolved only => draws only => others
         for child in self.children_of(root) {
             search_policy[child.action as usize] = child.num_visits;
             total += child.num_visits;
@@ -229,6 +230,7 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
             let value = if child.is_unvisited() {
                 self.cfg.fpu + child.action_prob
             } else {
+                // TODO prune solved nodes
                 let q = match child.solution {
                     Some(outcome) => outcome.reversed().value(),
                     None => -child.cum_value / child.num_visits,
@@ -328,6 +330,7 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
                         value = -node.cum_value - (node.num_visits + 1.0);
                     }
                 } else {
+                    // TODO re-normalize action prob
                     solved = false;
                 }
             }
