@@ -179,6 +179,7 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
             let root = self.node(self.root);
             (root.first_child, root.last_child(), root.num_children)
         };
+        // TODO sample noise for all actions EXCEPT highest action prob
         if num_children < 2 {
             return;
         }

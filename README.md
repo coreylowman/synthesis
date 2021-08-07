@@ -35,15 +35,13 @@ What's implemented:
 
 ###### General
 
+- [ ] mix mcst tree and minimax tree (of solved nodes) using p(correct)
 - [ ] Score Bounded solver https://www.lamsade.dauphine.fr/~cazenave/papers/mcsolver.pdf
 - [ ] Regularized Policy Optimization https://arxiv.org/abs/2007.12509
-- [ ] Combine UCT + PUCT terms (as in http://kth.diva-portal.org/smash/get/diva2:1514096/FULLTEXT01.pdf)
 - [ ] Schedules for various parameters
   - [ ] sample_actions_until
-  - [ ] learning rate
   - [ ] value target
   - [ ] noise_weight
-- [ ] Interpolate policy between search policy and best action
 - [ ] New algorithm for separate exploration/exploitation
   - [ ] Is this ExIt? https://arxiv.org/pdf/1705.08439.pdf
   - [ ] exploration process that builds off of exploit play line by sampling other states backward

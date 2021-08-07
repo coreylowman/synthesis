@@ -21,6 +21,7 @@ impl NNPolicy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
             l_2: nn::linear(root / "l_2", 128, 96, Default::default()),
             l_3: nn::linear(root / "l_3", 96, 64, Default::default()),
             l_4: nn::linear(root / "l_4", 64, 10, Default::default()),
+            // TODO add additional layer from 64 -> 48 -> 10
         }
     }
 
