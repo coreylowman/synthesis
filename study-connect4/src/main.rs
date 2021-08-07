@@ -11,7 +11,7 @@ fn learn<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
         seed: 0,
         logs: train_dir("./_logs", G::NAME)?,
 
-        lr_schedule: vec![(1, 1e-3)], // TODO (40, 1e-4), (80, 1e-5)
+        lr_schedule: vec![(1, 1e-3), (40, 1e-4), (80, 1e-5)],
         weight_decay: 1e-4,
         num_iterations: 200,
         num_epochs: 20,
@@ -30,9 +30,9 @@ fn learn<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
         noise_weight: 0.25,
 
         learner_mcts_cfg: MCTSConfig {
-            exploration: MCTSExploration::PUCT { c: 2.0 }, // TODO 1.0
+            exploration: MCTSExploration::PUCT { c: 2.0 },
             solve: true,
-            fpu: 1.0, // TODO 0.0
+            fpu: 1.0,
         },
 
         baseline_mcts_cfg: MCTSConfig {

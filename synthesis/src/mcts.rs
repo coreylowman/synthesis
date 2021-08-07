@@ -143,10 +143,23 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
         let root = self.node(self.root);
         let mut total = 0.0;
         search_policy.fill(0.0);
-        // TODO masked wins only => unsolved only => draws only => others
-        for child in self.children_of(root) {
-            search_policy[child.action as usize] = child.num_visits;
-            total += child.num_visits;
+        match root.solution {
+            Some(Outcome::Win) => {
+                // only keep child losses
+                for child in self.children_of(root) {
+                    if child.solution == Some(Outcome::Lose) {
+                        search_policy[child.action as usize] = child.num_visits;
+                        total += child.num_visits;
+                    }
+                }
+            }
+            _ => {
+                // keep search prob - draws & losses & unsolved need all nodes to be proven
+                for child in self.children_of(root) {
+                    search_policy[child.action as usize] = child.num_visits;
+                    total += child.num_visits;
+                }
+            }
         }
         for i in 0..N {
             search_policy[i] /= total;
@@ -229,12 +242,16 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
             let child = self.node(child_id);
             let value = if child.is_unvisited() {
                 self.cfg.fpu + child.action_prob
+            } else if let Some(_outcome) = child.solution {
+                f32::NEG_INFINITY
             } else {
                 // TODO prune solved nodes
-                let q = match child.solution {
-                    Some(outcome) => outcome.reversed().value(),
-                    None => -child.cum_value / child.num_visits,
-                };
+                // let q = match child.solution {
+                //     Some(outcome) => outcome.reversed().value(),
+                //     None => -child.cum_value / child.num_visits,
+                // };
+                // TODO do we even need q value?
+                let q = -child.cum_value / child.num_visits;
                 let u = match self.cfg.exploration {
                     MCTSExploration::UCT { c } => {
                         let visits = (c * node.num_visits.ln()).sqrt();
@@ -316,6 +333,8 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
                 }
 
                 let node = self.mut_node(node_id);
+                // TODO do draws need all proved as draws?
+                // TODO remove value & num visits from parents instead of relabeling
                 if worst_solution == Some(Outcome::Lose) {
                     // at least 1 is a win, so mark this node as a win
                     node.mark_solved(Outcome::Win);
