@@ -30,7 +30,7 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
                         first_player,
                         cfg.baseline_explores[i],
                         cfg.baseline_explores[j],
-                        seed,
+                        seed as u64,
                     ),
                 )?;
             }
@@ -60,16 +60,21 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
 
         for &explores in cfg.baseline_explores.iter() {
             let op_name = format!("VanillaMCTS{}", explores);
-            for seed in 0..10 {
-                let result =
-                    eval_against_vanilla_mcts(&cfg, &mut policy, first_player, explores, seed);
+            for seed in 0..cfg.baseline_num_games {
+                let result = eval_against_vanilla_mcts(
+                    &cfg,
+                    &mut policy,
+                    first_player,
+                    explores,
+                    seed as u64,
+                );
                 add_pgn_result(&mut pgn, &name, &op_name, result)?;
                 let result = eval_against_vanilla_mcts(
                     &cfg,
                     &mut policy,
                     first_player.next(),
                     explores,
-                    seed,
+                    seed as u64,
                 );
                 add_pgn_result(&mut pgn, &op_name, &name, result)?;
             }
@@ -299,7 +304,10 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> FrozenMCTS<'a, G, P, N> {
                 Some(Outcome::Win) => f32::NEG_INFINITY,
                 Some(Outcome::Draw) => 1e6,
                 Some(Outcome::Lose) => f32::INFINITY,
-                None => -child.cum_value / child.num_visits,
+                None => match self.cfg.action_selection {
+                    ActionSelection::Q => -child.cum_value / child.num_visits,
+                    ActionSelection::NumVisits => child.num_visits,
+                },
             };
             if best_action.is_none() || value > best_value {
                 best_value = value;
@@ -342,13 +350,16 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> FrozenMCTS<'a, G, P, N> {
                     None => -child.cum_value / child.num_visits,
                 };
                 let u = match self.cfg.exploration {
-                    MCTSExploration::UCT { c } => {
+                    Exploration::UCT { c } => {
                         let visits = (c * node.num_visits.ln()).sqrt();
                         visits / child.num_visits.sqrt()
                     }
-                    MCTSExploration::PUCT { c } => {
+                    Exploration::PUCT { c } => {
                         let visits = node.num_visits.sqrt();
                         c * child.action_prob * visits / (1.0 + child.num_visits)
+                    }
+                    Exploration::KLDIV { c } => {
+                        panic!("Not supported in frozen mcts");
                     }
                 };
                 q + u

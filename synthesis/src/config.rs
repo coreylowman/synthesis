@@ -2,23 +2,39 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum ValueTarget {
-    Z,         // Outcome of game {-1, 0, 1}
-    Q,         // Avg Value found while searching
-    QZaverage, // (Q + Z) / 2
-    QtoZ,      // interpolate from Q to Z based on turns
+    Z,                           // Outcome of game {-1, 0, 1}
+    Q,                           // Avg Value found while searching
+    QZaverage,                   // (Q + Z) / 2
+    QtoZ { from: f32, to: f32 }, // interpolate from Q to Z based on turns
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
-pub enum MCTSExploration {
+pub enum Exploration {
     UCT { c: f32 },
     PUCT { c: f32 },
+    KLDIV { c: f32 },
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+pub enum ActionSelection {
+    Q,         // avg value
+    NumVisits, // num visits
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub struct MCTSConfig {
-    pub exploration: MCTSExploration,
+    pub exploration: Exploration,
+    pub action_selection: ActionSelection,
     pub solve: bool,
     pub fpu: f32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+pub enum RolloutNoise {
+    None,
+    Dirichlet { alpha: f32, weight: f32 },
+    EntropyDirichlet { weight: f32 },
+    NumMovesDirichlet { weight: f32, scale: f32 },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -44,12 +60,11 @@ pub struct LearningConfig {
     pub num_explores: usize,
     pub num_random_actions: usize,
     pub sample_action_until: usize,
-    pub alpha: f32,
-    pub noisy_explore: bool,
-    pub noise_weight: f32,
+    pub noise: RolloutNoise,
 
     pub learner_mcts_cfg: MCTSConfig,
-    pub baseline_mcts_cfg: MCTSConfig,
 
+    pub baseline_mcts_cfg: MCTSConfig,
+    pub baseline_num_games: usize,
     pub baseline_explores: Vec<usize>,
 }

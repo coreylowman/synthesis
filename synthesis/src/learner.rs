@@ -1,4 +1,4 @@
-use crate::config::{LearningConfig, ValueTarget};
+use crate::config::{LearningConfig, RolloutNoise, ValueTarget};
 use crate::data::*;
 use crate::game::Game;
 use crate::mcts::MCTS;
@@ -160,10 +160,23 @@ fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
             game.clone(),
         );
 
-        // explore
-        if cfg.noisy_explore {
-            mcts.add_dirichlet_noise(rng, cfg.alpha, cfg.noise_weight);
+        // add in noise to search process
+        match cfg.noise {
+            RolloutNoise::None => {}
+            RolloutNoise::Dirichlet { alpha, weight } => {
+                mcts.add_dirichlet_noise(rng, alpha, weight);
+            }
+            RolloutNoise::EntropyDirichlet { weight } => {
+                let alpha = mcts.action_prob_entropy();
+                mcts.add_dirichlet_noise(rng, alpha, weight);
+            }
+            RolloutNoise::NumMovesDirichlet { weight, scale } => {
+                let alpha = scale / (mcts.num_valid_moves() as f32);
+                mcts.add_dirichlet_noise(rng, alpha, weight);
+            }
         }
+
+        // explore
         mcts.explore_n(cfg.num_explores);
 
         // store in buffer
@@ -220,7 +233,10 @@ fn store_rewards<G: Game<N>, const N: usize>(
             ValueTarget::Q => state.q,
             ValueTarget::Z => state.z,
             ValueTarget::QZaverage => 0.5 * (state.q + state.z),
-            ValueTarget::QtoZ => state.z * state.t + state.q * (1.0 - state.t),
+            ValueTarget::QtoZ { from, to } => {
+                let p = (1.0 - state.t) * from + state.t * to;
+                state.q * (1.0 - p) + state.z * p
+            }
         };
     }
 }

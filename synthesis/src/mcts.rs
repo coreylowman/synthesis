@@ -1,4 +1,4 @@
-use crate::config::{MCTSConfig, MCTSExploration};
+use crate::config::{ActionSelection, Exploration, MCTSConfig};
 use crate::game::{Game, Outcome};
 use crate::policies::Policy;
 use rand::{distributions::Distribution, Rng};
@@ -139,6 +139,18 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
         None
     }
 
+    pub fn action_prob_entropy(&self) -> f32 {
+        let mut entropy = 0.0;
+        for child in self.children_of(self.node(self.root)) {
+            entropy += child.action_prob * child.action_prob.ln();
+        }
+        -entropy
+    }
+
+    pub fn num_valid_moves(&self) -> usize {
+        self.node(self.root).num_children as usize
+    }
+
     pub fn extract_search_policy(&self, search_policy: &mut [f32; N]) {
         let root = self.node(self.root);
         let mut total = 0.0;
@@ -206,7 +218,10 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
                 Some(Outcome::Win) => f32::NEG_INFINITY,
                 Some(Outcome::Draw) => 1e6,
                 Some(Outcome::Lose) => f32::INFINITY,
-                None => -child.cum_value / child.num_visits,
+                None => match self.cfg.action_selection {
+                    ActionSelection::Q => -child.cum_value / child.num_visits,
+                    ActionSelection::NumVisits => child.num_visits,
+                },
             };
             if best_action.is_none() || value > best_value {
                 best_value = value;
@@ -254,13 +269,16 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
                 // TODO do we even need q value?
                 let q = -child.cum_value / child.num_visits;
                 let u = match self.cfg.exploration {
-                    MCTSExploration::UCT { c } => {
+                    Exploration::UCT { c } => {
                         let visits = (c * node.num_visits.ln()).sqrt();
                         visits / child.num_visits.sqrt()
                     }
-                    MCTSExploration::PUCT { c } => {
+                    Exploration::PUCT { c } => {
                         let visits = node.num_visits.sqrt();
                         c * child.action_prob * visits / (1.0 + child.num_visits)
+                    }
+                    Exploration::KLDIV { c } => {
+                        c * child.action_prob.ln() * (child.num_visits / node.num_visits)
                     }
                 };
                 q + u
@@ -581,7 +599,8 @@ mod tests {
         let mut mcts = MCTS::with_capacity(
             1601,
             MCTSConfig {
-                exploration: MCTSExploration::PUCT { c: 2.0 },
+                exploration: Exploration::PUCT { c: 2.0 },
+                action_selection: ActionSelection::Q,
                 solve: true,
                 fpu: f32::INFINITY,
             },
@@ -623,7 +642,8 @@ mod tests {
         let mut mcts = MCTS::with_capacity(
             1601,
             MCTSConfig {
-                exploration: MCTSExploration::PUCT { c: 2.0 },
+                exploration: Exploration::PUCT { c: 2.0 },
+                action_selection: ActionSelection::Q,
                 solve: true,
                 fpu: f32::INFINITY,
             },
@@ -667,7 +687,8 @@ mod tests {
         let mut mcts = MCTS::with_capacity(
             1601,
             MCTSConfig {
-                exploration: MCTSExploration::PUCT { c: 2.0 },
+                exploration: Exploration::PUCT { c: 2.0 },
+                action_selection: ActionSelection::Q,
                 solve: true,
                 fpu: f32::INFINITY,
             },
@@ -710,7 +731,8 @@ mod tests {
         let mut mcts = MCTS::with_capacity(
             1601,
             MCTSConfig {
-                exploration: MCTSExploration::PUCT { c: 2.0 },
+                exploration: Exploration::PUCT { c: 2.0 },
+                action_selection: ActionSelection::Q,
                 solve: true,
                 fpu: f32::INFINITY,
             },

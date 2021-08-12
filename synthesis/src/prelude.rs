@@ -1,4 +1,6 @@
-pub use crate::config::{LearningConfig, MCTSConfig, MCTSExploration, ValueTarget};
+pub use crate::config::{
+    ActionSelection, Exploration, LearningConfig, MCTSConfig, RolloutNoise, ValueTarget,
+};
 pub use crate::data::tensor;
 pub use crate::evaluator::evaluator;
 pub use crate::game::{Game, HasTurnOrder};
