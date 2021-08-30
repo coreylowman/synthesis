@@ -8,7 +8,10 @@ This repo is a cargo workspace made up of multiple crates & binaries:
 - `slimnn`: A small neural network crate in pure rust
 - `export`: A binary crate that saves pytorch weights into a format slimnn can understand
 
-What's implemented:
+```cargo run --release --bin study-connect4```
+
+## What's implemented
+
 - Integration with the tch-rs [1] package to support pytorch in rust
 - 💪 General MCTS implementation that supports the standard rollout method as well as using a NN in place of rollouts
   - Includes MCTS Solver [2]
@@ -31,11 +34,18 @@ What's implemented:
 4. https://deepmind.com/blog/article/alphazero-shedding-new-light-grand-games-chess-shogi-and-go
 5. https://www.remi-coulom.fr/Bayesian-Elo/
 
-### Improvements
+## Improvements
 
 ###### General
 
+- [ ] Evaluation metrics in addition to elo:
+  - [ ] Depth reached
+  - [ ] Something for how quickly positions are solved
+  - [ ] Search policy accuracy
+  - [ ] value accuracy against Q
+  - [ ] value accuracy against 2-ply minimax value
 - [ ] mix mcst tree and minimax tree (of solved nodes) using p(correct)
+- [ ] Support transpositions (and backprop to multiple parents) while training... does this improve strength?
 - [ ] Score Bounded solver https://www.lamsade.dauphine.fr/~cazenave/papers/mcsolver.pdf
 - [ ] Regularized Policy Optimization https://arxiv.org/abs/2007.12509
 - [ ] Schedules for various parameters
@@ -47,15 +57,6 @@ What's implemented:
   - [ ] exploration process that builds off of exploit play line by sampling other states backward
   - [ ] exploit process that samples a state from ^ and exploits all the way down
 
-
-###### Neural Network Architecture
-- [ ] Value head as distribution of {W,D,L}
-  - [ ] Use highest predicted as value
-  - [ ] Use weighted sum as value
-
-###### Quality of life
-- [ ] save replay buffer in addition to weights so you can resume training
-
 ###### Performance
 - [x] compiler flags (LTO=fat, codegen-units=1, target=native)
 - [ ] multi threaded gather_experience
@@ -65,22 +66,13 @@ What's implemented:
 - [ ] reverse linear weight dimensions for speed up
 - [ ] support outputting 16 bit floats instead of 32 bit floats https://github.com/starkat99/half-rs/blob/master/src/bfloat/convert.rs
 
+## Resources for learning more about AlphaZero
 
-```
-queue of steps
-for X number of games:
-  pop step
-  restore game to step's state
-  play through game exploitatively, adding steps to queue
-```
-
-### Resources for learning more about AlphaZero
-
-https://medium.com/@sleepsonthefloor/azfour-a-connect-four-webapp-powered-by-the-alphazero-algorithm-d0c82d6f3ae9
-https://deepmind.com/blog/article/alphazero-shedding-new-light-grand-games-chess-shogi-and-go
-https://www.nature.com/articles/nature24270.epdf
-https://dselsam.github.io/posts/2018-06-06-issues-with-alpha-zero.html
-https://github.com/deepmind/open_spiel/blob/master/open_spiel/algorithms/alpha_zero_torch/alpha_zero.cc
-https://lczero.org/blog/2018/12/alphazero-paper-and-lc0-v0191/
-http://proceedings.mlr.press/v97/tian19a/tian19a.pdf
-https://link.springer.com/content/pdf/10.1007/s00521-021-05928-5.pdf
+- https://medium.com/@sleepsonthefloor/azfour-a-connect-four-webapp-powered-by-the-alphazero-algorithm-d0c82d6f3ae9
+- https://deepmind.com/blog/article/alphazero-shedding-new-light-grand-games-chess-shogi-and-go
+- https://www.nature.com/articles/nature24270.epdf
+- https://dselsam.github.io/posts/2018-06-06-issues-with-alpha-zero.html
+- https://github.com/deepmind/open_spiel/blob/master/open_spiel/algorithms/alpha_zero_torch/alpha_zero.cc
+- https://lczero.org/blog/2018/12/alphazero-paper-and-lc0-v0191/
+- http://proceedings.mlr.press/v97/tian19a/tian19a.pdf
+- https://link.springer.com/content/pdf/10.1007/s00521-021-05928-5.pdf
