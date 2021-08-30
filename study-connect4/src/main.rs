@@ -11,12 +11,12 @@ fn learn<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
         seed: 0,
         logs: train_dir("./_logs", G::NAME)?,
 
-        lr_schedule: vec![(1, 1e-3), (40, 1e-4), (80, 1e-5)],
+        lr_schedule: vec![(1, 1e-2), (40, 1e-3), (80, 1e-4)],
         weight_decay: 1e-4,
         num_iterations: 200,
         num_epochs: 20,
         batch_size: 64,
-        value_target: ValueTarget::QtoZ { from: 0.5, to: 1.0 },
+        value_target: ValueTarget::Q,
 
         buffer_size: 256_000,
         games_to_keep: 20000,
@@ -24,36 +24,26 @@ fn learn<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
 
         num_explores: 1600,
         num_random_actions: 1,
-        sample_action_until: 25, // TODO 63 (max turns)
-
-        // TODO entropy dirichlet { 0.25 }, num moves dirichlet { 0.25, 10.0 }
-        noise: RolloutNoise::Dirichlet {
-            alpha: 10.0 / (N as f32),
-            weight: 0.25,
-        },
-
+        sample_action_until: 64,
+        stop_games_when_solved: false,
+        noise: RolloutNoise::None,
         learner_mcts_cfg: MCTSConfig {
-            exploration: Exploration::PUCT { c: 2.0 },    // TODO try kl
-            action_selection: ActionSelection::NumVisits, // TODO try num visits
+            exploration: Exploration::PolynomialUct { c: 2.0 },
+            action_selection: ActionSelection::NumVisits,
             solve: true,
             fpu: 1.0,
         },
 
+        baseline_best_k: 5,
         baseline_mcts_cfg: MCTSConfig {
-            exploration: Exploration::UCT { c: 2.0 },
+            exploration: Exploration::Uct { c: 2.0 },
             action_selection: ActionSelection::Q,
             solve: true,
             fpu: f32::INFINITY,
         },
         baseline_num_games: 10,
-        baseline_explores: vec![
-            100, 200, 400, 800, 1600, 2400, 3200, 4800, 6400, 9600, 12800, 25600, 51200,
-        ],
+        baseline_explores: vec![800, 1600, 3200, 6400, 12800, 25600, 51200, 102400],
     };
-
-    // TODO try w/d/l & dot with [1,0,-1]
-    // TODO try w/d/l & take argmax
-    // TODO generate games using 50% latest & 50% best
 
     tch::set_num_threads(2);
     tch::set_num_interop_threads(2);

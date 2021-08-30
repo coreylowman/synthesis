@@ -15,6 +15,8 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
     let _guard = tch::no_grad_guard();
     let first_player = G::new().player();
 
+    let mut best_k = Vec::with_capacity(cfg.baseline_best_k);
+
     for i in 0..cfg.baseline_explores.len() {
         for j in 0..cfg.baseline_explores.len() {
             if i == j {
@@ -49,9 +51,9 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
 
         // load model
         let mut vs = VarStore::new(tch::Device::Cpu);
-        let policy = P::new(&vs);
+        let mut policy = P::new(&vs);
         vs.load(models_dir.join(&name))?;
-        let mut policy = OwnedPolicyWithCache::with_capacity(100_000, policy);
+        // let mut policy = OwnedPolicyWithCache::with_capacity(100_000, policy);
 
         let result = eval_against_random(&cfg, &mut policy, first_player);
         add_pgn_result(&mut pgn, &name, &String::from("Random"), result)?;
@@ -80,9 +82,46 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
             }
         }
 
+        for (prev_name, prev_p) in best_k.iter_mut() {
+            for _ in 0..cfg.baseline_num_games {
+                let result = eval_against_old(&cfg, &mut policy, prev_p);
+                add_pgn_result(&mut pgn, &name, &prev_name, result)?;
+
+                let result = eval_against_old(&cfg, prev_p, &mut policy);
+                add_pgn_result(&mut pgn, &prev_name, &name, result)?;
+            }
+        }
+
         // update results
         calculate_ratings(&cfg.logs)?;
         plot_ratings(&cfg.logs)?;
+
+        // update top k
+        if best_k.len() < cfg.baseline_best_k {
+            best_k.push((name, policy));
+        } else {
+            let ranks = rankings(&cfg.logs)?;
+            if ranks
+                .iter()
+                .take(cfg.baseline_best_k)
+                .position(|n| n == &name)
+                .is_some()
+            {
+                best_k.push((name, policy));
+                match best_k.iter().position(|(n, _p)| {
+                    ranks
+                        .iter()
+                        .take(cfg.baseline_best_k)
+                        .position(|n1| n1 == n)
+                        .is_some()
+                }) {
+                    Some(i) => {
+                        best_k.remove(i);
+                    }
+                    None => panic!("Didn't find policy to evict"),
+                }
+            }
+        }
     }
 
     Ok(())
@@ -105,6 +144,26 @@ fn eval_against_random<G: Game<N>, P: Policy<G, N>, const N: usize>(
             game.iter_actions().nth(i).unwrap()
         };
 
+        if game.step(&action) {
+            break;
+        }
+    }
+    game.reward(first_player)
+}
+
+fn eval_against_old<G: Game<N>, P: Policy<G, N>, const N: usize>(
+    cfg: &LearningConfig,
+    p1: &mut P,
+    p2: &mut P,
+) -> f32 {
+    let mut game = G::new();
+    let first_player = game.player();
+    loop {
+        let action = if game.player() == first_player {
+            MCTS::exploit(cfg.num_explores, cfg.learner_mcts_cfg, p1, game.clone())
+        } else {
+            MCTS::exploit(cfg.num_explores, cfg.learner_mcts_cfg, p2, game.clone())
+        };
         if game.step(&action) {
             break;
         }
@@ -306,7 +365,7 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> FrozenMCTS<'a, G, P, N> {
                 Some(Outcome::Lose) => f32::INFINITY,
                 None => match self.cfg.action_selection {
                     ActionSelection::Q => -child.cum_value / child.num_visits,
-                    ActionSelection::NumVisits => child.num_visits,
+                    _ => panic!(""),
                 },
             };
             if best_action.is_none() || value > best_value {
@@ -350,15 +409,11 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> FrozenMCTS<'a, G, P, N> {
                     None => -child.cum_value / child.num_visits,
                 };
                 let u = match self.cfg.exploration {
-                    Exploration::UCT { c } => {
+                    Exploration::Uct { c } => {
                         let visits = (c * node.num_visits.ln()).sqrt();
                         visits / child.num_visits.sqrt()
                     }
-                    Exploration::PUCT { c } => {
-                        let visits = node.num_visits.sqrt();
-                        c * child.action_prob * visits / (1.0 + child.num_visits)
-                    }
-                    Exploration::KLDIV { c } => {
+                    _ => {
                         panic!("Not supported in frozen mcts");
                     }
                 };

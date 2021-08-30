@@ -220,6 +220,8 @@ impl Game<WIDTH> for Connect4 {
     fn step(&mut self, action: &Self::Action) -> bool {
         let col: usize = (*action).into();
 
+        // assert!(self.height[col] < HEIGHT as u8);
+
         self.my_bb ^= 1 << (self.height[col] + (HEIGHT as u8) * (col as u8));
         self.height[col] += 1;
 

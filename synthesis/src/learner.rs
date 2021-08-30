@@ -1,6 +1,6 @@
 use crate::config::{LearningConfig, RolloutNoise, ValueTarget};
 use crate::data::*;
-use crate::game::Game;
+use crate::game::{Game, Outcome};
 use crate::mcts::MCTS;
 use crate::policies::{NNPolicy, Policy, PolicyWithCache};
 use crate::utils::*;
@@ -11,7 +11,7 @@ use rand::{distributions::Distribution, distributions::WeightedIndex, Rng};
 use std::default::Default;
 use tch::{
     kind::Kind,
-    nn::{Adam, OptimizerConfig, VarStore},
+    nn::{Adam, OptimizerConfig, RmsProp, VarStore},
 };
 
 pub fn learner<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
@@ -33,7 +33,7 @@ pub fn learner<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
 
     let vs = VarStore::new(tch::Device::Cpu);
     let mut policy = P::new(&vs);
-    let mut opt = Adam::default().build(&vs, cfg.lr_schedule[0].1)?;
+    let mut opt = RmsProp::default().build(&vs, cfg.lr_schedule[0].1)?;
     opt.set_weight_decay(cfg.weight_decay);
     vs.save(models_dir.join(String::from("model_0.ot")))?;
 
@@ -95,6 +95,9 @@ pub fn learner<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
 
         // save latest weights
         vs.save(models_dir.join(format!("model_{}.ot", i_iter + 1)))?;
+        states.write_npy(cfg.logs.join("latest_states.npy"))?;
+        target_pis.write_npy(cfg.logs.join("latest_pis.npy"))?;
+        target_vs.write_npy(cfg.logs.join("latest_vs.npy"))?;
 
         println!(
             "Finished iteration {} | {} games played / {} steps taken | {} games / {} steps in replay buffer",
@@ -146,13 +149,12 @@ fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
     buffer: &mut ReplayBuffer<G, N>,
 ) {
     let mut game = G::new();
-    let mut is_over = false;
+    let mut solution = None;
     let mut search_policy = [0.0; N];
     let mut num_turns = 0;
-    let start_player = game.player();
     let mut state_infos = Vec::with_capacity(100);
 
-    while !is_over {
+    while solution.is_none() {
         let mut mcts = MCTS::with_capacity(
             cfg.num_explores + 1,
             cfg.learner_mcts_cfg,
@@ -164,14 +166,6 @@ fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
         match cfg.noise {
             RolloutNoise::None => {}
             RolloutNoise::Dirichlet { alpha, weight } => {
-                mcts.add_dirichlet_noise(rng, alpha, weight);
-            }
-            RolloutNoise::EntropyDirichlet { weight } => {
-                let alpha = mcts.action_prob_entropy();
-                mcts.add_dirichlet_noise(rng, alpha, weight);
-            }
-            RolloutNoise::NumMovesDirichlet { weight, scale } => {
-                let alpha = scale / (mcts.num_valid_moves() as f32);
                 mcts.add_dirichlet_noise(rng, alpha, weight);
             }
         }
@@ -190,33 +184,39 @@ fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
         });
 
         // pick action
-        // TODO flip a bool if mcts.solution is some instead of checking again
         let best = mcts.best_action();
+        solution = mcts.solution(&best);
         let action = if num_turns < cfg.num_random_actions {
             let n = rng.gen_range(0..game.iter_actions().count() as u8) as usize;
             game.iter_actions().nth(n).unwrap()
-        } else if num_turns < cfg.sample_action_until && mcts.solution(&best).is_none() {
+        } else if num_turns < cfg.sample_action_until && !cfg.stop_games_when_solved {
             let dist = WeightedIndex::new(&search_policy).unwrap();
             let choice = dist.sample(rng);
+            // assert!(search_policy[choice] > 0.0);
             G::Action::from(choice)
         } else {
             best
         };
 
-        is_over = game.step(&action);
+        let is_over = game.step(&action);
+        if is_over {
+            solution = Some(game.reward(game.player()).into());
+        } else if !cfg.stop_games_when_solved {
+            solution = None;
+        }
         num_turns += 1;
     }
 
-    fill_state_info(&mut state_infos, game.reward(start_player));
+    fill_state_info(&mut state_infos, solution.unwrap().reversed());
     store_rewards(cfg, buffer, &state_infos);
 }
 
-fn fill_state_info(state_infos: &mut Vec<StateInfo>, mut reward: f32) {
+fn fill_state_info(state_infos: &mut Vec<StateInfo>, mut outcome: Outcome) {
     let num_turns = state_infos.len();
-    for state_value in state_infos.iter_mut() {
-        state_value.z = reward;
+    for state_value in state_infos.iter_mut().rev() {
+        state_value.z = outcome.value();
         state_value.t = state_value.turn as f32 / num_turns as f32;
-        reward = -reward;
+        outcome = outcome.reversed();
     }
 }
 

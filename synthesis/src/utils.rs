@@ -88,3 +88,20 @@ pub fn plot_ratings(dir: &PathBuf) -> std::io::Result<()> {
     assert!(output.success());
     Ok(())
 }
+
+pub fn rankings(dir: &PathBuf) -> std::io::Result<Vec<String>> {
+    let file = File::open(dir.join("ratings"))?;
+    let reader = std::io::BufReader::new(file);
+    let mut names = Vec::new();
+    for line in reader.lines().skip(1) {
+        let l = String::from(line?.trim());
+        match l.find("model_") {
+            Some(start_i) => {
+                let end_i = l.find(".ot").unwrap();
+                names.push(String::from(l[start_i..end_i].trim()));
+            }
+            None => {}
+        }
+    }
+    Ok(names)
+}

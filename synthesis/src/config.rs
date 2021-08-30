@@ -10,15 +10,16 @@ pub enum ValueTarget {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub enum Exploration {
-    UCT { c: f32 },
-    PUCT { c: f32 },
-    KLDIV { c: f32 },
+    Uct { c: f32 },
+    PolynomialUct { c: f32 },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub enum ActionSelection {
     Q,         // avg value
     NumVisits, // num visits
+    Pqv,       // action_prob + Q value + visit prob
+    Minimax,   // 2 ply minimax using q
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
@@ -33,8 +34,6 @@ pub struct MCTSConfig {
 pub enum RolloutNoise {
     None,
     Dirichlet { alpha: f32, weight: f32 },
-    EntropyDirichlet { weight: f32 },
-    NumMovesDirichlet { weight: f32, scale: f32 },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -61,9 +60,11 @@ pub struct LearningConfig {
     pub num_random_actions: usize,
     pub sample_action_until: usize,
     pub noise: RolloutNoise,
+    pub stop_games_when_solved: bool,
 
     pub learner_mcts_cfg: MCTSConfig,
 
+    pub baseline_best_k: usize,
     pub baseline_mcts_cfg: MCTSConfig,
     pub baseline_num_games: usize,
     pub baseline_explores: Vec<usize>,

@@ -139,40 +139,40 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
         None
     }
 
-    pub fn action_prob_entropy(&self) -> f32 {
-        let mut entropy = 0.0;
-        for child in self.children_of(self.node(self.root)) {
-            entropy += child.action_prob * child.action_prob.ln();
-        }
-        -entropy
-    }
-
-    pub fn num_valid_moves(&self) -> usize {
-        self.node(self.root).num_children as usize
-    }
-
     pub fn extract_search_policy(&self, search_policy: &mut [f32; N]) {
         let root = self.node(self.root);
         let mut total = 0.0;
         search_policy.fill(0.0);
-        match root.solution {
-            Some(Outcome::Win) => {
-                // only keep child losses
-                for child in self.children_of(root) {
-                    if child.solution == Some(Outcome::Lose) {
-                        search_policy[child.action as usize] = child.num_visits;
-                        total += child.num_visits;
+        if root.num_visits == 1.0 {
+            // assert!(root.solution.is_some());
+            match root.solution {
+                Some(Outcome::Win) => {
+                    for child in self.children_of(root) {
+                        let v = if child.solution == Some(Outcome::Lose) {
+                            1.0
+                        } else {
+                            0.0
+                        };
+                        search_policy[child.action as usize] = v;
+                        total += v;
+                    }
+                }
+                _ => {
+                    for child in self.children_of(root) {
+                        search_policy[child.action as usize] = 1.0;
+                        total += 1.0;
                     }
                 }
             }
-            _ => {
-                // keep search prob - draws & losses & unsolved need all nodes to be proven
-                for child in self.children_of(root) {
-                    search_policy[child.action as usize] = child.num_visits;
-                    total += child.num_visits;
-                }
+        } else {
+            // assert!(root.num_visits > 1.0);
+            for child in self.children_of(root) {
+                let v = child.num_visits;
+                search_policy[child.action as usize] = v;
+                total += v;
             }
         }
+        // assert!(total > 0.0, "{:?} {:?}", root.solution, root.num_visits);
         for i in 0..N {
             search_policy[i] /= total;
         }
@@ -221,6 +221,33 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
                 None => match self.cfg.action_selection {
                     ActionSelection::Q => -child.cum_value / child.num_visits,
                     ActionSelection::NumVisits => child.num_visits,
+                    ActionSelection::Pqv => {
+                        let p = child.action_prob;
+                        let q = 1.0 - (0.5 * child.cum_value / child.num_visits + 0.5);
+                        let v = child.num_visits / root.num_visits;
+                        p + q + v
+                    }
+                    ActionSelection::Minimax => {
+                        let mut best_v2 = None;
+                        for c2 in self.children_of(child) {
+                            if c2.is_unvisited() {
+                                continue;
+                            }
+                            let v2 = match c2.solution {
+                                Some(Outcome::Win) => Some(f32::NEG_INFINITY),
+                                Some(Outcome::Draw) => Some(1e6),
+                                Some(Outcome::Lose) => Some(f32::INFINITY),
+                                None => Some(-c2.cum_value / c2.num_visits),
+                            };
+                            if v2 > best_v2 {
+                                best_v2 = v2;
+                            }
+                        }
+                        match best_v2 {
+                            Some(v) => -v,
+                            None => -child.cum_value / child.num_visits,
+                        }
+                    }
                 },
             };
             if best_action.is_none() || value > best_value {
@@ -243,47 +270,40 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
                 self.backprop(node_id, value, any_solved);
                 return;
             } else {
-                node_id = self.select_best_child(node_id);
+                node_id = self.select_best_child(&node);
             }
         }
     }
 
-    fn select_best_child(&mut self, node_id: NodeId) -> NodeId {
-        let node = self.node(node_id);
-
+    fn select_best_child(&self, node: &Node<G, N>) -> NodeId {
         let mut best_child_id = None;
-        let mut best_value = f32::NEG_INFINITY;
-        for child_ind in 0..node.num_children {
-            let child_id = node.first_child + child_ind as u32;
+        let mut best_value = None;
+        for child_id in node.first_child..node.last_child() {
             let child = self.node(child_id);
-            let value = if child.is_unvisited() {
-                self.cfg.fpu + child.action_prob
-            } else if let Some(_outcome) = child.solution {
-                f32::NEG_INFINITY
+
+            // calculate exploit value
+            let q = if let Some(outcome) = child.solution {
+                outcome.reversed().value()
+            } else if child.is_unvisited() {
+                self.cfg.fpu
             } else {
-                // TODO prune solved nodes
-                // let q = match child.solution {
-                //     Some(outcome) => outcome.reversed().value(),
-                //     None => -child.cum_value / child.num_visits,
-                // };
-                // TODO do we even need q value?
-                let q = -child.cum_value / child.num_visits;
-                let u = match self.cfg.exploration {
-                    Exploration::UCT { c } => {
-                        let visits = (c * node.num_visits.ln()).sqrt();
-                        visits / child.num_visits.sqrt()
-                    }
-                    Exploration::PUCT { c } => {
-                        let visits = node.num_visits.sqrt();
-                        c * child.action_prob * visits / (1.0 + child.num_visits)
-                    }
-                    Exploration::KLDIV { c } => {
-                        c * child.action_prob.ln() * (child.num_visits / node.num_visits)
-                    }
-                };
-                q + u
+                -child.cum_value / child.num_visits
             };
-            if best_child_id.is_none() || value > best_value {
+
+            // calculate explore value
+            let u = match self.cfg.exploration {
+                Exploration::Uct { c } => {
+                    let visits = (c * node.num_visits.ln()).sqrt();
+                    visits / child.num_visits.sqrt()
+                }
+                Exploration::PolynomialUct { c } => {
+                    let visits = node.num_visits.sqrt();
+                    c * child.action_prob * visits / (1.0 + child.num_visits)
+                }
+            };
+
+            let value = Some(q + u);
+            if value > best_value {
                 best_child_id = Some(child_id);
                 best_value = value;
             }
@@ -352,8 +372,6 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
                 }
 
                 let node = self.mut_node(node_id);
-                // TODO do draws need all proved as draws?
-                // TODO remove value & num visits from parents instead of relabeling
                 if worst_solution == Some(Outcome::Lose) {
                     // at least 1 is a win, so mark this node as a win
                     node.mark_solved(Outcome::Win);
@@ -368,7 +386,6 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
                         value = -node.cum_value - (node.num_visits + 1.0);
                     }
                 } else {
-                    // TODO re-normalize action prob
                     solved = false;
                 }
             }
@@ -376,16 +393,19 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
             let node = self.mut_node(node_id);
             node.cum_value += value;
             node.num_visits += 1.0;
-            value = -value;
             if node_id == self.root {
                 break;
             }
+            value = -value;
             node_id = parent;
         }
     }
 
     pub fn explore_n(&mut self, n: usize) {
         for _ in 0..n {
+            if self.node(self.root).solution.is_some() {
+                break;
+            }
             self.explore();
         }
     }
@@ -599,7 +619,7 @@ mod tests {
         let mut mcts = MCTS::with_capacity(
             1601,
             MCTSConfig {
-                exploration: Exploration::PUCT { c: 2.0 },
+                exploration: Exploration::PolynomialUct { c: 2.0 },
                 action_selection: ActionSelection::Q,
                 solve: true,
                 fpu: f32::INFINITY,
@@ -642,7 +662,7 @@ mod tests {
         let mut mcts = MCTS::with_capacity(
             1601,
             MCTSConfig {
-                exploration: Exploration::PUCT { c: 2.0 },
+                exploration: Exploration::PolynomialUct { c: 2.0 },
                 action_selection: ActionSelection::Q,
                 solve: true,
                 fpu: f32::INFINITY,
@@ -687,7 +707,7 @@ mod tests {
         let mut mcts = MCTS::with_capacity(
             1601,
             MCTSConfig {
-                exploration: Exploration::PUCT { c: 2.0 },
+                exploration: Exploration::PolynomialUct { c: 2.0 },
                 action_selection: ActionSelection::Q,
                 solve: true,
                 fpu: f32::INFINITY,
@@ -731,7 +751,7 @@ mod tests {
         let mut mcts = MCTS::with_capacity(
             1601,
             MCTSConfig {
-                exploration: Exploration::PUCT { c: 2.0 },
+                exploration: Exploration::PolynomialUct { c: 2.0 },
                 action_selection: ActionSelection::Q,
                 solve: true,
                 fpu: f32::INFINITY,
