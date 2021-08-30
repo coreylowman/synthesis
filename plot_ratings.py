@@ -32,13 +32,9 @@ def main():
     elos = [scores[name] - scores[0] for name in names]
     plt.plot(names, elos, label="Learner")
     plt.scatter(names, elos)
-    plt.plot(
-        [names[0], names[-1]],
-        [random_score - scores[0], random_score - scores[0]],
-        linestyle="dashed",
-        label="Random",
-    )
     for name, elo in mcts_scores.items():
+        if elo - scores[0] < 0:
+            continue
         plt.plot(
             [names[0], names[-1]],
             [elo - scores[0], elo - scores[0]],
@@ -47,6 +43,10 @@ def main():
         )
         plt.text(names[-1], elo - scores[0], name.replace("VanillaMCTS", ""))
     # plt.legend()
+    plt.title("Strength through training")
+    plt.xlabel("Iteration")
+    plt.ylim(bottom=-20)
+    plt.ylabel("BayesianELO")
     plt.savefig(f"{os.path.dirname(args.path)}/ratings.png")
 
 
