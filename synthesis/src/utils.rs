@@ -98,7 +98,7 @@ pub fn rankings(dir: &PathBuf) -> std::io::Result<Vec<String>> {
         match l.find("model_") {
             Some(start_i) => {
                 let end_i = l.find(".ot").unwrap();
-                names.push(String::from(l[start_i..end_i].trim()));
+                names.push(String::from(l[start_i..end_i + 3].trim()));
             }
             None => {}
         }

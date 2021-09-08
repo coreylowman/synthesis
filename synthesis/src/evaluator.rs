@@ -9,6 +9,8 @@ use tch::nn::VarStore;
 pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
     cfg: &LearningConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    std::thread::sleep(std::time::Duration::from_secs(1));
+
     let models_dir = cfg.logs.join("models");
     let pgn_path = cfg.logs.join("results.pgn");
     let mut pgn = std::fs::File::create(&pgn_path)?;
@@ -83,13 +85,11 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
         }
 
         for (prev_name, prev_p) in best_k.iter_mut() {
-            for _ in 0..cfg.baseline_num_games {
-                let result = eval_against_old(&cfg, &mut policy, prev_p);
-                add_pgn_result(&mut pgn, &name, &prev_name, result)?;
+            let result = eval_against_old(&cfg, &mut policy, prev_p);
+            add_pgn_result(&mut pgn, &name, &prev_name, result)?;
 
-                let result = eval_against_old(&cfg, prev_p, &mut policy);
-                add_pgn_result(&mut pgn, &prev_name, &name, result)?;
-            }
+            let result = eval_against_old(&cfg, prev_p, &mut policy);
+            add_pgn_result(&mut pgn, &prev_name, &name, result)?;
         }
 
         // update results
@@ -113,7 +113,7 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
                         .iter()
                         .take(cfg.baseline_best_k)
                         .position(|n1| n1 == n)
-                        .is_some()
+                        .is_none()
                 }) {
                     Some(i) => {
                         best_k.remove(i);
