@@ -11,12 +11,14 @@ fn learn<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
         seed: 0,
         logs: train_dir("./_logs", G::NAME)?,
 
-        lr_schedule: vec![(1, 1e-2), (40, 1e-3), (80, 1e-4)],
+        lr_schedule: vec![(1, 1e-3), (20, 5e-4), (40, 1e-4), (60, 5e-5), (80, 1e-5)],
         weight_decay: 1e-4,
         num_iterations: 200,
         num_epochs: 20,
-        batch_size: 64,
+        batch_size: 32,
         value_target: ValueTarget::Q,
+        policy_weight: 1.0,
+        value_weight: 1.0,
 
         buffer_size: 256_000,
         games_to_keep: 20000,
@@ -28,13 +30,13 @@ fn learn<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
         stop_games_when_solved: false,
         noise: RolloutNoise::None,
         learner_mcts_cfg: MCTSConfig {
-            exploration: Exploration::PolynomialUct { c: 2.0 },
+            exploration: Exploration::PolynomialUct { c: 4.0 },
             action_selection: ActionSelection::NumVisits,
             solve: true,
             fpu: 1.0,
         },
 
-        baseline_best_k: 5,
+        baseline_best_k: 10,
         baseline_mcts_cfg: MCTSConfig {
             exploration: Exploration::Uct { c: 2.0 },
             action_selection: ActionSelection::Q,
@@ -42,7 +44,7 @@ fn learn<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
             fpu: f32::INFINITY,
         },
         baseline_num_games: 10,
-        baseline_explores: vec![800, 1600, 3200, 6400, 12800, 25600, 51200, 102400],
+        baseline_explores: vec![800, 1600, 3200, 6400, 12800, 25600, 51200, 102400, 204800],
     };
 
     tch::set_num_threads(2);

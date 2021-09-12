@@ -49,6 +49,8 @@ pub struct LearningConfig {
     pub num_epochs: usize,
     pub batch_size: i64,
     pub value_target: ValueTarget,
+    pub policy_weight: f32,
+    pub value_weight: f32,
 
     // replay buffer params
     pub buffer_size: usize,

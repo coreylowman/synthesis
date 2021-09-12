@@ -1,5 +1,4 @@
 use crate::connect4::Connect4;
-use slimnn::{Activation, Linear, ReLU};
 use synthesis::prelude::*;
 use tch::{self, nn, Tensor};
 
@@ -54,36 +53,5 @@ impl Policy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
         logits.copy_data(&mut policy, Connect4::MAX_NUM_ACTIONS);
         let value = f32::from(&value).clamp(-1.0, 1.0);
         (policy, value)
-    }
-}
-
-#[derive(Default)]
-pub struct SlimC4Net {
-    l_1: Linear<63, 48>,
-    l_2: Linear<48, 32>,
-    l_3: Linear<32, 10>,
-}
-
-impl SlimC4Net {
-    fn forward(&self, x: &[[[f32; 9]; 7]; 1]) -> ([f32; Connect4::MAX_NUM_ACTIONS], f32) {
-        let x: [f32; 63] = unsafe { std::mem::transmute(*x) };
-
-        let x = self.l_1.forward(&x);
-        let x = ReLU.apply_1d(&x);
-        let x = self.l_2.forward(&x);
-        let x = ReLU.apply_1d(&x);
-        let x = self.l_3.forward(&x);
-
-        let mut logits = [0.0; 9];
-        logits.copy_from_slice(&x[..Connect4::MAX_NUM_ACTIONS]);
-        let value = x[Connect4::MAX_NUM_ACTIONS].clamp(-1.0, 1.0);
-
-        (logits, value)
-    }
-}
-
-impl Policy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for SlimC4Net {
-    fn eval(&mut self, env: &Connect4) -> ([f32; Connect4::MAX_NUM_ACTIONS], f32) {
-        self.forward(&env.features())
     }
 }

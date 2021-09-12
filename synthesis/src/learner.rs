@@ -11,7 +11,7 @@ use rand::{distributions::Distribution, distributions::WeightedIndex, Rng};
 use std::default::Default;
 use tch::{
     kind::Kind,
-    nn::{Adam, OptimizerConfig, RmsProp, VarStore},
+    nn::{Adam, OptimizerConfig, VarStore},
 };
 
 pub fn learner<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
@@ -33,8 +33,10 @@ pub fn learner<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
 
     let vs = VarStore::new(tch::Device::Cpu);
     let mut policy = P::new(&vs);
-    let mut opt = RmsProp::default().build(&vs, cfg.lr_schedule[0].1)?;
-    opt.set_weight_decay(cfg.weight_decay);
+    let mut opt = Adam::default().build(&vs, cfg.lr_schedule[0].1)?;
+    if cfg.weight_decay > 0.0 {
+        opt.set_weight_decay(cfg.weight_decay);
+    }
     vs.save(models_dir.join(String::from("model_0.ot")))?;
 
     let mut dims = G::DIMS.to_owned();
@@ -82,7 +84,7 @@ pub fn learner<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
                 let pi_loss = batch_mean * log_pi.kl_div(&target_pi, tch::Reduction::Sum, false);
                 let v_loss = v.mse_loss(&target_v, tch::Reduction::Mean);
 
-                let loss = &pi_loss + &v_loss;
+                let loss = cfg.policy_weight * &pi_loss + cfg.value_weight * &v_loss;
                 opt.backward_step(&loss);
 
                 epoch_loss[0] += f32::from(&pi_loss);
@@ -189,7 +191,9 @@ fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
         let action = if num_turns < cfg.num_random_actions {
             let n = rng.gen_range(0..game.iter_actions().count() as u8) as usize;
             game.iter_actions().nth(n).unwrap()
-        } else if num_turns < cfg.sample_action_until && !cfg.stop_games_when_solved {
+        } else if num_turns < cfg.sample_action_until
+            && (solution.is_none() || !cfg.stop_games_when_solved)
+        {
             let dist = WeightedIndex::new(&search_policy).unwrap();
             let choice = dist.sample(rng);
             // assert!(search_policy[choice] > 0.0);
