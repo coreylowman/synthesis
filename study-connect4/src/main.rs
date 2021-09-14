@@ -52,7 +52,7 @@ fn learn<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
 
     let eval_cfg = cfg.clone();
     let eval_handle = std::thread::spawn(move || evaluator::<G, P, N>(&eval_cfg).unwrap());
-    learner::<G, P, N>(&cfg)?;
+    alpha_zero::<G, P, N>(&cfg)?;
     eval_handle.join().unwrap();
     Ok(())
 }

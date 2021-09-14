@@ -103,6 +103,18 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
         mcts
     }
 
+    pub fn explore_n(&mut self, n: usize) {
+        for _ in 0..n {
+            // NOTE this is important for value extraction because if root is solved then children might not have any visits
+            if self.node(self.root).solution.is_some() {
+                break;
+            }
+            self.explore();
+        }
+    }
+}
+
+impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
     fn next_node_id(&self) -> NodeId {
         self.nodes.len() as NodeId + self.offset
     }
@@ -123,26 +135,13 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
     fn mut_nodes(&mut self, first_child: NodeId, last_child: NodeId) -> &mut [Node<G, N>] {
         &mut self.nodes[(first_child - self.offset) as usize..(last_child - self.offset) as usize]
     }
+}
 
-    pub fn solution(&self, action: &G::Action) -> Option<Outcome> {
-        let action: usize = (*action).into();
-        let action = action as u8;
-        let root = self.node(self.root);
-        for child in self.children_of(root) {
-            if child.is_unvisited() {
-                continue;
-            }
-            if child.action == action {
-                return child.solution;
-            }
-        }
-        None
-    }
-
-    pub fn extract_search_policy(&self, search_policy: &mut [f32; N]) {
-        let root = self.node(self.root);
-        let mut total = 0.0;
+impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
+    pub fn target_policy(&self, search_policy: &mut [f32; N]) {
         search_policy.fill(0.0);
+        let mut total = 0.0;
+        let root = self.node(self.root);
         if root.num_visits == 1.0 {
             // assert!(root.solution.is_some());
             match root.solution {
@@ -178,24 +177,24 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
         }
     }
 
-    pub fn extract_avg_value(&self) -> f32 {
+    pub fn target_q(&self) -> f32 {
         let root = self.node(self.root);
         match root.solution {
             Some(outcome) => outcome.value(),
             None => root.cum_value / root.num_visits,
         }
     }
+}
 
+impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
     pub fn add_dirichlet_noise<R: Rng>(&mut self, rng: &mut R, alpha: f32, noise_weight: f32) {
-        let (first_child, last_child, num_children) = {
-            let root = self.node(self.root);
-            (root.first_child, root.last_child(), root.num_children)
-        };
-        // TODO sample noise for all actions EXCEPT highest action prob
-        if num_children < 2 {
+        let root = self.node(self.root);
+        let first_child = root.first_child;
+        let last_child = root.last_child();
+        if root.num_children < 2 {
             return;
         }
-        let dirichlet = Dirichlet::new_with_size(alpha, num_children as usize).unwrap();
+        let dirichlet = Dirichlet::new_with_size(alpha, root.num_children as usize).unwrap();
         let noise_probs = dirichlet.sample(rng);
         for (noise, child) in noise_probs
             .iter()
@@ -204,26 +203,25 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
             child.action_prob = child.action_prob * (1.0 - noise_weight) + noise_weight * noise;
         }
     }
+}
 
+impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
     pub fn best_action(&self) -> G::Action {
         let root = self.node(self.root);
 
         let mut best_action = None;
-        let mut best_value = f32::NEG_INFINITY;
+        let mut best_value = None;
         for child in self.children_of(root) {
-            if child.is_unvisited() {
-                continue;
-            }
             let value = match child.solution {
-                Some(Outcome::Win) => f32::NEG_INFINITY,
-                Some(Outcome::Draw) => 1e6,
-                Some(Outcome::Lose) => f32::INFINITY,
+                Some(Outcome::Win) => Some(f32::NEG_INFINITY),
+                Some(Outcome::Draw) => Some(1e6),
+                Some(Outcome::Lose) => Some(f32::INFINITY),
                 None => match self.cfg.action_selection {
-                    ActionSelection::Q => -child.cum_value / child.num_visits,
-                    ActionSelection::NumVisits => child.num_visits,
+                    ActionSelection::Q => Some(-child.cum_value / child.num_visits.max(1.0)),
+                    ActionSelection::NumVisits => Some(child.num_visits),
                 },
             };
-            if best_action.is_none() || value > best_value {
+            if value > best_value {
                 best_value = value;
                 best_action = Some((child.action as usize).into());
             }
@@ -231,6 +229,20 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
         best_action.unwrap()
     }
 
+    pub fn solution(&self, action: &G::Action) -> Option<Outcome> {
+        let action: usize = (*action).into();
+        let action = action as u8;
+        let root = self.node(self.root);
+        for child in self.children_of(root) {
+            if child.action == action {
+                return child.solution;
+            }
+        }
+        None
+    }
+}
+
+impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
     fn explore(&mut self) {
         let mut node_id = self.root;
         loop {
@@ -248,36 +260,13 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
         }
     }
 
-    fn select_best_child(&self, node: &Node<G, N>) -> NodeId {
+    fn select_best_child(&self, parent: &Node<G, N>) -> NodeId {
         let mut best_child_id = None;
         let mut best_value = None;
-        for child_id in node.first_child..node.last_child() {
+        for child_id in parent.first_child..parent.last_child() {
             let child = self.node(child_id);
-
-            // calculate exploit value
-            let q = if let Some(outcome) = child.solution {
-                outcome.reversed().value()
-            } else if child.is_unvisited() {
-                match self.cfg.fpu {
-                    Fpu::Const(value) => value,
-                    Fpu::ParentQ => node.cum_value / node.num_visits,
-                }
-            } else {
-                -child.cum_value / child.num_visits
-            };
-
-            // calculate explore value
-            let u = match self.cfg.exploration {
-                Exploration::Uct { c } => {
-                    let visits = (c * node.num_visits.ln()).sqrt();
-                    visits / child.num_visits.sqrt()
-                }
-                Exploration::PolynomialUct { c } => {
-                    let visits = node.num_visits.sqrt();
-                    c * child.action_prob * visits / (1.0 + child.num_visits)
-                }
-            };
-
+            let q = self.exploit_value(parent, child);
+            let u = self.explore_value(parent, child);
             let value = Some(q + u);
             if value > best_value {
                 best_child_id = Some(child_id);
@@ -285,6 +274,32 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
             }
         }
         best_child_id.unwrap()
+    }
+
+    fn exploit_value(&self, parent: &Node<G, N>, child: &Node<G, N>) -> f32 {
+        if let Some(outcome) = child.solution {
+            outcome.reversed().value()
+        } else if child.num_children == 0 {
+            match self.cfg.fpu {
+                Fpu::Const(value) => value,
+                Fpu::ParentQ => parent.cum_value / parent.num_visits,
+            }
+        } else {
+            -child.cum_value / child.num_visits
+        }
+    }
+
+    fn explore_value(&self, parent: &Node<G, N>, child: &Node<G, N>) -> f32 {
+        match self.cfg.exploration {
+            Exploration::Uct { c } => {
+                let visits = (c * parent.num_visits.ln()).sqrt();
+                visits / child.num_visits.sqrt()
+            }
+            Exploration::PolynomialUct { c } => {
+                let visits = parent.num_visits.sqrt();
+                c * child.action_prob * visits / (1.0 + child.num_visits)
+            }
+        }
     }
 
     fn visit(&mut self, node_id: NodeId) -> (f32, bool) {
@@ -374,15 +389,6 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
             }
             value = -value;
             node_id = parent;
-        }
-    }
-
-    pub fn explore_n(&mut self, n: usize) {
-        for _ in 0..n {
-            if self.node(self.root).solution.is_some() {
-                break;
-            }
-            self.explore();
         }
     }
 }
@@ -607,7 +613,7 @@ mod tests {
             mcts.explore();
         }
         let mut search_policy = [0.0; 9];
-        mcts.extract_search_policy(&mut search_policy);
+        mcts.target_policy(&mut search_policy);
         assert_eq!(mcts.node(mcts.root).solution, Some(Outcome::Win));
         assert_eq!(
             &search_policy,
@@ -622,7 +628,7 @@ mod tests {
         assert_eq!(mcts.solution(&6.into()), Some(Outcome::Lose));
         assert_eq!(mcts.solution(&7.into()), None);
         assert_eq!(mcts.solution(&8.into()), None);
-        assert_eq!(mcts.extract_avg_value(), 1.0);
+        assert_eq!(mcts.target_q(), 1.0);
         assert_eq!(mcts.best_action(), 6.into());
         assert_eq!(mcts.nodes.len(), 311);
     }
@@ -651,7 +657,7 @@ mod tests {
         }
         assert_eq!(mcts.node(mcts.root).solution, Some(Outcome::Lose));
         let mut search_policy = [0.0; 9];
-        mcts.extract_search_policy(&mut search_policy);
+        mcts.target_policy(&mut search_policy);
         assert_eq!(
             &search_policy,
             &[
@@ -668,7 +674,7 @@ mod tests {
         assert_eq!(mcts.solution(&6.into()), None);
         assert_eq!(mcts.solution(&7.into()), Some(Outcome::Win));
         assert_eq!(mcts.solution(&8.into()), Some(Outcome::Win));
-        assert_eq!(mcts.extract_avg_value(), -1.0);
+        assert_eq!(mcts.target_q(), -1.0);
         assert_eq!(mcts.best_action(), 1.into());
         assert_eq!(mcts.nodes.len(), 69);
     }
@@ -697,7 +703,7 @@ mod tests {
 
         assert_eq!(mcts.node(mcts.root).solution, Some(Outcome::Draw));
         let mut search_policy = [0.0; 9];
-        mcts.extract_search_policy(&mut search_policy);
+        mcts.target_policy(&mut search_policy);
         assert_eq!(
             &search_policy,
             &[
@@ -714,7 +720,7 @@ mod tests {
         assert_eq!(mcts.solution(&6.into()), Some(Outcome::Draw));
         assert_eq!(mcts.solution(&7.into()), Some(Outcome::Draw));
         assert_eq!(mcts.solution(&8.into()), Some(Outcome::Draw));
-        assert_eq!(mcts.extract_avg_value(), 0.0);
+        assert_eq!(mcts.target_q(), 0.0);
         assert_eq!(mcts.best_action(), 1.into());
         assert_eq!(mcts.nodes.len(), 1533);
     }

@@ -14,23 +14,23 @@ use tch::{
     nn::{Adam, OptimizerConfig, VarStore},
 };
 
-pub fn learner<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
+pub fn alpha_zero<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
     cfg: &LearningConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // set up directory structure
     std::fs::create_dir_all(&cfg.logs)?;
     let models_dir = cfg.logs.join("models");
-
     std::fs::create_dir(&models_dir)?;
     save(&cfg.logs, "cfg.json", cfg)?;
     save_str(&cfg.logs, "env_name", &G::NAME.into())?;
     save_str(&cfg.logs, "git_hash", &git_hash()?)?;
     save_str(&cfg.logs, "git_diff.patch", &git_diff()?)?;
 
+    // seed rngs
     tch::manual_seed(cfg.seed as i64);
     let mut rng = StdRng::seed_from_u64(cfg.seed);
 
-    let batch_mean = 1.0 / (cfg.batch_size as f32);
-
+    // init policy
     let vs = VarStore::new(tch::Device::Cpu);
     let mut policy = P::new(&vs);
     let mut opt = Adam::default().build(&vs, cfg.lr_schedule[0].1)?;
@@ -39,9 +39,12 @@ pub fn learner<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
     }
     vs.save(models_dir.join(String::from("model_0.ot")))?;
 
-    let mut dims = G::DIMS.to_owned();
+    // init replay buffer
     let mut buffer = ReplayBuffer::new(cfg.buffer_size);
 
+    // start learning!
+    let mut dims = G::DIMS.to_owned();
+    let batch_mean = 1.0 / (cfg.batch_size as f32);
     for i_iter in 0..cfg.num_iterations {
         // gather data
         {
@@ -49,7 +52,7 @@ pub fn learner<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
             gather_experience(cfg, &mut policy, &mut rng, &mut buffer);
         }
 
-        // convert to tensors
+        // convert buffer data to tensors
         let dedup = buffer.deduplicate();
         println!("Dedup {} -> {} steps", buffer.vs.len(), dedup.vs.len());
         dims[0] = dedup.vs.len() as i64;
@@ -57,6 +60,7 @@ pub fn learner<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
         let target_pis = tensor(&dedup.pis, &[dims[0], N as i64], Kind::Float);
         let target_vs = tensor(&dedup.vs, &[dims[0], 1], Kind::Float);
 
+        // calculate lr from schedule
         let lr = cfg
             .lr_schedule
             .iter()
@@ -74,11 +78,11 @@ pub fn learner<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
 
             let mut epoch_loss = [0.0, 0.0];
             for (state, target_pi, target_v) in sampler {
-                assert_eq!(state.size()[0], cfg.batch_size);
+                // assert_eq!(state.size()[0], cfg.batch_size);
 
                 let (logits, v) = policy.forward(&state);
-                assert_eq!(logits.size(), target_pi.size());
-                assert_eq!(v.size(), target_v.size());
+                // assert_eq!(logits.size(), target_pi.size());
+                // assert_eq!(v.size(), target_v.size());
 
                 let log_pi = logits.log_softmax(-1, Kind::Float);
                 let pi_loss = batch_mean * log_pi.kl_div(&target_pi, tch::Reduction::Sum, false);
@@ -120,8 +124,6 @@ fn gather_experience<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
     rng: &mut R,
     buffer: &mut ReplayBuffer<G, N>,
 ) {
-    let mut cached_policy = PolicyWithCache::with_capacity(100 * cfg.games_per_train, policy);
-
     buffer.keep_last_n_games(cfg.games_to_keep - cfg.games_per_train);
     let bar = ProgressBar::new(cfg.games_per_train as u64);
     bar.set_style(
@@ -129,12 +131,25 @@ fn gather_experience<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
             .template("[{bar:40}] {percent}% {pos}/{len} {per_sec} {elapsed_precise}")
             .progress_chars("|| "),
     );
-    for _ in 0..cfg.games_per_train {
+    run_n_games(cfg, policy, rng, buffer, cfg.games_per_train, bar);
+}
+
+fn run_n_games<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
+    cfg: &LearningConfig,
+    policy: &mut P,
+    rng: &mut R,
+    buffer: &mut ReplayBuffer<G, N>,
+    num_games: usize,
+    progress_bar: ProgressBar,
+) {
+    let mut cached_policy = PolicyWithCache::with_capacity(100 * cfg.games_per_train, policy);
+
+    for _ in 0..num_games {
         buffer.new_game();
         run_game(cfg, &mut cached_policy, rng, buffer);
-        bar.inc(1);
+        progress_bar.inc(1);
     }
-    bar.finish();
+    progress_bar.finish();
 }
 
 struct StateInfo {
@@ -142,6 +157,17 @@ struct StateInfo {
     t: f32,
     q: f32,
     z: f32,
+}
+
+impl StateInfo {
+    fn q(turn: usize, q: f32) -> Self {
+        Self {
+            turn,
+            t: 0.0,
+            q,
+            z: 0.0,
+        }
+    }
 }
 
 fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
@@ -165,42 +191,19 @@ fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
         );
 
         // add in noise to search process
-        match cfg.noise {
-            RolloutNoise::None => {}
-            RolloutNoise::Dirichlet { alpha, weight } => {
-                mcts.add_dirichlet_noise(rng, alpha, weight);
-            }
-        }
+        add_noise(cfg, &mut mcts, rng);
 
         // explore
         mcts.explore_n(cfg.num_explores);
 
         // store in buffer
-        mcts.extract_search_policy(&mut search_policy);
+        mcts.target_policy(&mut search_policy);
         buffer.add(&game, &search_policy, 0.0);
-        state_infos.push(StateInfo {
-            turn: num_turns + 1,
-            t: 0.0,
-            q: mcts.extract_avg_value(),
-            z: 0.0,
-        });
+        state_infos.push(StateInfo::q(num_turns + 1, mcts.target_q()));
 
         // pick action
-        let best = mcts.best_action();
-        solution = mcts.solution(&best);
-        let action = if num_turns < cfg.num_random_actions {
-            let n = rng.gen_range(0..game.iter_actions().count() as u8) as usize;
-            game.iter_actions().nth(n).unwrap()
-        } else if num_turns < cfg.sample_action_until
-            && (solution.is_none() || !cfg.stop_games_when_solved)
-        {
-            let dist = WeightedIndex::new(&search_policy).unwrap();
-            let choice = dist.sample(rng);
-            // assert!(search_policy[choice] > 0.0);
-            G::Action::from(choice)
-        } else {
-            best
-        };
+        let action = sample_action(cfg, &mut mcts, &game, &search_policy, rng, num_turns);
+        solution = mcts.solution(&action);
 
         let is_over = game.step(&action);
         if is_over {
@@ -213,6 +216,45 @@ fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
 
     fill_state_info(&mut state_infos, solution.unwrap().reversed());
     store_rewards(cfg, buffer, &state_infos);
+}
+
+fn add_noise<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
+    cfg: &LearningConfig,
+    mcts: &mut MCTS<G, P, N>,
+    rng: &mut R,
+) {
+    match cfg.noise {
+        RolloutNoise::None => {}
+        RolloutNoise::Dirichlet { alpha, weight } => {
+            mcts.add_dirichlet_noise(rng, alpha, weight);
+        }
+    }
+}
+
+fn sample_action<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
+    cfg: &LearningConfig,
+    mcts: &mut MCTS<G, P, N>,
+    game: &G,
+    search_policy: &[f32],
+    rng: &mut R,
+    num_turns: usize,
+) -> G::Action {
+    let best = mcts.best_action();
+    let solution = mcts.solution(&best);
+    let action = if num_turns < cfg.num_random_actions {
+        let n = rng.gen_range(0..game.iter_actions().count() as u8) as usize;
+        game.iter_actions().nth(n).unwrap()
+    } else if num_turns < cfg.sample_action_until
+        && (solution.is_none() || !cfg.stop_games_when_solved)
+    {
+        let dist = WeightedIndex::new(search_policy).unwrap();
+        let choice = dist.sample(rng);
+        // assert!(search_policy[choice] > 0.0);
+        G::Action::from(choice)
+    } else {
+        best
+    };
+    action
 }
 
 fn fill_state_info(state_infos: &mut Vec<StateInfo>, mut outcome: Outcome) {
