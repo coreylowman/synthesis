@@ -157,6 +157,18 @@ impl<G: Game<N>, const N: usize> ReplayBuffer<G, N> {
         self.vs.push(v);
     }
 
+    pub fn extend(&mut self, other: &mut Self) {
+        self.steps += other.steps;
+        let start = self.game_id;
+        self.game_ids
+            .extend(other.game_ids.iter().map(|&g| g + start));
+        self.game_id += other.game_id;
+        self.games.extend(other.games.drain(..));
+        self.states.extend(other.states.drain(..));
+        self.pis.extend(other.pis.drain(..));
+        self.vs.extend(other.vs.drain(..));
+    }
+
     pub fn keep_last_n_games(&mut self, n: usize) {
         if self.game_id <= n {
             return;
