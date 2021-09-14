@@ -23,11 +23,17 @@ pub enum ActionSelection {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+pub enum Fpu {
+    Const(f32),
+    ParentQ,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub struct MCTSConfig {
     pub exploration: Exploration,
     pub action_selection: ActionSelection,
     pub solve: bool,
-    pub fpu: f32,
+    pub fpu: Fpu,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]

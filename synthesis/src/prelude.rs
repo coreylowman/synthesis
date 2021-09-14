@@ -1,5 +1,5 @@
 pub use crate::config::{
-    ActionSelection, Exploration, LearningConfig, MCTSConfig, RolloutNoise, ValueTarget,
+    ActionSelection, Exploration, Fpu, LearningConfig, MCTSConfig, RolloutNoise, ValueTarget,
 };
 pub use crate::data::tensor;
 pub use crate::evaluator::evaluator;

@@ -1,4 +1,4 @@
-use crate::config::{ActionSelection, Exploration, MCTSConfig};
+use crate::config::{ActionSelection, Exploration, Fpu, MCTSConfig};
 use crate::game::{Game, Outcome};
 use crate::policies::Policy;
 use rand::{distributions::Distribution, Rng};
@@ -285,7 +285,10 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
             let q = if let Some(outcome) = child.solution {
                 outcome.reversed().value()
             } else if child.is_unvisited() {
-                self.cfg.fpu
+                match self.cfg.fpu {
+                    Fpu::Const(value) => value,
+                    Fpu::ParentQ => node.cum_value / node.num_visits,
+                }
             } else {
                 -child.cum_value / child.num_visits
             };
@@ -622,7 +625,7 @@ mod tests {
                 exploration: Exploration::PolynomialUct { c: 2.0 },
                 action_selection: ActionSelection::Q,
                 solve: true,
-                fpu: f32::INFINITY,
+                fpu: Fpu::Const(f32::INFINITY),
             },
             &mut policy,
             game.clone(),
@@ -665,7 +668,7 @@ mod tests {
                 exploration: Exploration::PolynomialUct { c: 2.0 },
                 action_selection: ActionSelection::Q,
                 solve: true,
-                fpu: f32::INFINITY,
+                fpu: Fpu::Const(f32::INFINITY),
             },
             &mut policy,
             game.clone(),
@@ -710,7 +713,7 @@ mod tests {
                 exploration: Exploration::PolynomialUct { c: 2.0 },
                 action_selection: ActionSelection::Q,
                 solve: true,
-                fpu: f32::INFINITY,
+                fpu: Fpu::Const(f32::INFINITY),
             },
             &mut policy,
             game.clone(),
@@ -754,7 +757,7 @@ mod tests {
                 exploration: Exploration::PolynomialUct { c: 2.0 },
                 action_selection: ActionSelection::Q,
                 solve: true,
-                fpu: f32::INFINITY,
+                fpu: Fpu::Const(f32::INFINITY),
             },
             &mut policy,
             game.clone(),

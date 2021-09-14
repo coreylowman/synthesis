@@ -402,7 +402,11 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> FrozenMCTS<'a, G, P, N> {
             let child_id = node.first_child + child_ind as u32;
             let child = self.node(child_id);
             let value = if child.is_unvisited() {
-                self.cfg.fpu + child.action_prob
+                let f = match self.cfg.fpu {
+                    Fpu::Const(value) => value,
+                    _ => panic!("Unsupported fpu in baseline"),
+                };
+                f + child.action_prob
             } else {
                 let q = match child.solution {
                     Some(outcome) => outcome.reversed().value(),

@@ -33,7 +33,7 @@ fn learn<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
             exploration: Exploration::PolynomialUct { c: 4.0 },
             action_selection: ActionSelection::NumVisits,
             solve: true,
-            fpu: 1.0,
+            fpu: Fpu::Const(1.0),
         },
 
         baseline_best_k: 10,
@@ -41,7 +41,7 @@ fn learn<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
             exploration: Exploration::Uct { c: 2.0 },
             action_selection: ActionSelection::Q,
             solve: true,
-            fpu: f32::INFINITY,
+            fpu: Fpu::Const(f32::INFINITY),
         },
         baseline_num_games: 10,
         baseline_explores: vec![800, 1600, 3200, 6400, 12800, 25600, 51200, 102400, 204800],
