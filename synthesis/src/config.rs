@@ -62,6 +62,7 @@ pub struct LearningConfig {
     pub games_per_train: usize,
 
     // runner params
+    pub num_threads: usize,
     pub num_explores: usize,
     pub num_random_actions: usize,
     pub sample_action_until: usize,

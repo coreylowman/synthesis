@@ -24,6 +24,7 @@ fn learn<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
         games_to_keep: 20000,
         games_per_train: 1000,
 
+        num_threads: 0,
         num_explores: 1600,
         num_random_actions: 1,
         sample_action_until: 64,
@@ -47,8 +48,8 @@ fn learn<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
         baseline_explores: vec![800, 1600, 3200, 6400, 12800, 25600, 51200, 102400, 204800],
     };
 
-    tch::set_num_threads(2);
-    tch::set_num_interop_threads(2);
+    tch::set_num_threads(1);
+    tch::set_num_interop_threads(1);
 
     let eval_cfg = cfg.clone();
     let eval_handle = std::thread::spawn(move || evaluator::<G, P, N>(&eval_cfg).unwrap());

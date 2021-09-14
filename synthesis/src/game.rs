@@ -65,11 +65,11 @@ impl PartialOrd for Outcome {
     }
 }
 
-pub trait Game<const N: usize>: Eq + Hash + Clone + std::fmt::Debug {
+pub trait Game<const N: usize>: Eq + Hash + Clone + std::fmt::Debug + Send {
     type PlayerId: HasTurnOrder;
     type Action: Eq + Clone + Copy + std::fmt::Debug + Into<usize> + From<usize>;
     type ActionIterator: Iterator<Item = Self::Action>;
-    type Features: PartialEq + Clone + std::fmt::Debug;
+    type Features: PartialEq + Clone + std::fmt::Debug + Send;
 
     const MAX_NUM_ACTIONS: usize = N;
     const NAME: &'static str;

@@ -5,9 +5,8 @@ use crate::mcts::MCTS;
 use crate::policies::{NNPolicy, Policy, PolicyWithCache};
 use crate::utils::*;
 use indicatif::{ProgressBar, ProgressStyle};
-use rand::rngs::StdRng;
-use rand::SeedableRng;
-use rand::{distributions::Distribution, distributions::WeightedIndex, Rng};
+use rand::prelude::*;
+use rand::{distributions::Distribution, distributions::WeightedIndex};
 use std::default::Default;
 use tch::{
     kind::Kind,
@@ -124,6 +123,20 @@ fn gather_experience<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
     rng: &mut R,
     buffer: &mut ReplayBuffer<G, N>,
 ) {
+    let num_workers = cfg.num_threads + 1;
+    let num_games_per_thread = cfg.games_per_train / num_workers;
+    let num_games_in_main_thread = num_games_per_thread + cfg.games_per_train % num_workers;
+    assert_eq!(
+        num_games_per_thread * cfg.num_threads + num_games_in_main_thread,
+        cfg.games_per_train
+    );
+
+    for _ in 0..cfg.num_threads {
+        todo!("num_threads > 0 unsupported");
+        // TODO initialize multi progress bar
+        // TODO spawn a thread
+    }
+
     buffer.keep_last_n_games(cfg.games_to_keep - cfg.games_per_train);
     let bar = ProgressBar::new(cfg.games_per_train as u64);
     bar.set_style(
@@ -131,7 +144,7 @@ fn gather_experience<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
             .template("[{bar:40}] {percent}% {pos}/{len} {per_sec} {elapsed_precise}")
             .progress_chars("|| "),
     );
-    run_n_games(cfg, policy, rng, buffer, cfg.games_per_train, bar);
+    run_n_games(cfg, policy, rng, buffer, num_games_in_main_thread, bar);
 }
 
 fn run_n_games<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
