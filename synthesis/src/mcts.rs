@@ -203,6 +203,19 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
             child.action_prob = child.action_prob * (1.0 - noise_weight) + noise_weight * noise;
         }
     }
+
+    pub fn add_equalizing_noise(&mut self, noise_weight: f32) {
+        let root = self.node(self.root);
+        let first_child = root.first_child;
+        let last_child = root.last_child();
+        if root.num_children < 2 {
+            return;
+        }
+        let noise = 1.0 / root.num_children as f32;
+        for child in self.mut_nodes(first_child, last_child) {
+            child.action_prob = child.action_prob * (1.0 - noise_weight) + noise_weight * noise;
+        }
+    }
 }
 
 impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {

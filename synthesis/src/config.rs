@@ -37,6 +37,7 @@ pub struct MCTSConfig {
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub enum RolloutNoise {
     None,
+    Equal { weight: f32 },
     Dirichlet { alpha: f32, weight: f32 },
 }
 

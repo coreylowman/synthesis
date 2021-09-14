@@ -238,6 +238,9 @@ fn add_noise<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
 ) {
     match cfg.noise {
         RolloutNoise::None => {}
+        RolloutNoise::Equal { weight } => {
+            mcts.add_equalizing_noise(weight);
+        }
         RolloutNoise::Dirichlet { alpha, weight } => {
             mcts.add_dirichlet_noise(rng, alpha, weight);
         }
