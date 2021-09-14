@@ -221,33 +221,6 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
                 None => match self.cfg.action_selection {
                     ActionSelection::Q => -child.cum_value / child.num_visits,
                     ActionSelection::NumVisits => child.num_visits,
-                    ActionSelection::Pqv => {
-                        let p = child.action_prob;
-                        let q = 1.0 - (0.5 * child.cum_value / child.num_visits + 0.5);
-                        let v = child.num_visits / root.num_visits;
-                        p + q + v
-                    }
-                    ActionSelection::Minimax => {
-                        let mut best_v2 = None;
-                        for c2 in self.children_of(child) {
-                            if c2.is_unvisited() {
-                                continue;
-                            }
-                            let v2 = match c2.solution {
-                                Some(Outcome::Win) => Some(f32::NEG_INFINITY),
-                                Some(Outcome::Draw) => Some(1e6),
-                                Some(Outcome::Lose) => Some(f32::INFINITY),
-                                None => Some(-c2.cum_value / c2.num_visits),
-                            };
-                            if v2 > best_v2 {
-                                best_v2 = v2;
-                            }
-                        }
-                        match best_v2 {
-                            Some(v) => -v,
-                            None => -child.cum_value / child.num_visits,
-                        }
-                    }
                 },
             };
             if best_action.is_none() || value > best_value {

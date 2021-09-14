@@ -18,8 +18,6 @@ pub enum Exploration {
 pub enum ActionSelection {
     Q,         // avg value
     NumVisits, // num visits
-    Pqv,       // action_prob + Q value + visit prob
-    Minimax,   // 2 ply minimax using q
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
