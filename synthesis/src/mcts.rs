@@ -41,6 +41,10 @@ impl<G: Game<N>, const N: usize> Node<G, N> {
         }
     }
 
+    fn action(&self) -> G::Action {
+        (self.action as usize).into()
+    }
+
     #[inline]
     fn is_unvisited(&self) -> bool {
         self.num_children == 0 && self.solution.is_none()
@@ -236,7 +240,7 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
             };
             if value > best_value {
                 best_value = value;
-                best_action = Some((child.action as usize).into());
+                best_action = Some(child.action());
             }
         }
         best_action.unwrap()
@@ -268,7 +272,7 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
                 self.backprop(node_id, value, any_solved);
                 return;
             } else {
-                node_id = self.select_best_child(&node);
+                node_id = self.select_best_child(node);
             }
         }
     }
@@ -365,6 +369,7 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
             let parent = node.parent;
 
             if self.cfg.solve && solved && node.is_unsolved() {
+                // compute whether all children are solved & best solution so far
                 let mut all_solved = true;
                 let mut worst_solution = None;
                 for child in self.children_of(node) {
@@ -400,7 +405,7 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
             if node_id == self.root {
                 break;
             }
-            value = -value;
+            value = -self.cfg.discount * value;
             node_id = parent;
         }
     }
@@ -618,6 +623,7 @@ mod tests {
                 action_selection: ActionSelection::Q,
                 solve: true,
                 fpu: Fpu::Const(f32::INFINITY),
+                discount: 1.0,
             },
             &mut policy,
             game.clone(),
@@ -661,6 +667,7 @@ mod tests {
                 action_selection: ActionSelection::Q,
                 solve: true,
                 fpu: Fpu::Const(f32::INFINITY),
+                discount: 1.0,
             },
             &mut policy,
             game.clone(),
@@ -706,6 +713,7 @@ mod tests {
                 action_selection: ActionSelection::Q,
                 solve: true,
                 fpu: Fpu::Const(f32::INFINITY),
+                discount: 1.0,
             },
             &mut policy,
             game.clone(),
@@ -750,6 +758,7 @@ mod tests {
                 action_selection: ActionSelection::Q,
                 solve: true,
                 fpu: Fpu::Const(f32::INFINITY),
+                discount: 1.0,
             },
             &mut policy,
             game.clone(),

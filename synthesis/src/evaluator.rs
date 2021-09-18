@@ -365,7 +365,7 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> FrozenMCTS<'a, G, P, N> {
                 Some(Outcome::Lose) => f32::INFINITY,
                 None => match self.cfg.action_selection {
                     ActionSelection::Q => -child.cum_value / child.num_visits,
-                    _ => panic!(""),
+                    ActionSelection::NumVisits => child.num_visits,
                 },
             };
             if best_action.is_none() || value > best_value {
@@ -513,7 +513,7 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> FrozenMCTS<'a, G, P, N> {
             let node = self.mut_node(node_id);
             node.cum_value += value;
             node.num_visits += 1.0;
-            value = -value;
+            value = -self.cfg.discount * value;
             if node_id == self.root {
                 break;
             }
