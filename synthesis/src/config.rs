@@ -32,7 +32,6 @@ pub struct MCTSConfig {
     pub action_selection: ActionSelection,
     pub solve: bool,
     pub fpu: Fpu,
-    pub discount: f32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]

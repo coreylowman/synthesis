@@ -35,7 +35,6 @@ fn learn<G: 'static + Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>
             action_selection: ActionSelection::NumVisits,
             solve: true,
             fpu: Fpu::Const(1.0),
-            discount: 0.99,
         },
 
         baseline_best_k: 10,
@@ -44,7 +43,6 @@ fn learn<G: 'static + Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>
             action_selection: ActionSelection::Q,
             solve: true,
             fpu: Fpu::Const(f32::INFINITY),
-            discount: 1.0,
         },
         baseline_num_games: 10,
         baseline_explores: vec![800, 1600, 3200, 6400, 12800, 25600, 51200, 102400, 204800],

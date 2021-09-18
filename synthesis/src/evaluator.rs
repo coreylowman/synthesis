@@ -513,7 +513,7 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> FrozenMCTS<'a, G, P, N> {
             let node = self.mut_node(node_id);
             node.cum_value += value;
             node.num_visits += 1.0;
-            value = -self.cfg.discount * value;
+            value = -value;
             if node_id == self.root {
                 break;
             }

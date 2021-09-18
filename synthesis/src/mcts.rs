@@ -405,7 +405,7 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
             if node_id == self.root {
                 break;
             }
-            value = -self.cfg.discount * value;
+            value = -value;
             node_id = parent;
         }
     }
@@ -623,7 +623,6 @@ mod tests {
                 action_selection: ActionSelection::Q,
                 solve: true,
                 fpu: Fpu::Const(f32::INFINITY),
-                discount: 1.0,
             },
             &mut policy,
             game.clone(),
@@ -667,7 +666,6 @@ mod tests {
                 action_selection: ActionSelection::Q,
                 solve: true,
                 fpu: Fpu::Const(f32::INFINITY),
-                discount: 1.0,
             },
             &mut policy,
             game.clone(),
@@ -713,7 +711,6 @@ mod tests {
                 action_selection: ActionSelection::Q,
                 solve: true,
                 fpu: Fpu::Const(f32::INFINITY),
-                discount: 1.0,
             },
             &mut policy,
             game.clone(),
@@ -758,7 +755,6 @@ mod tests {
                 action_selection: ActionSelection::Q,
                 solve: true,
                 fpu: Fpu::Const(f32::INFINITY),
-                discount: 1.0,
             },
             &mut policy,
             game.clone(),
