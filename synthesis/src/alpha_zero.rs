@@ -4,7 +4,7 @@ use crate::game::{Game, Outcome};
 use crate::mcts::MCTS;
 use crate::policies::{NNPolicy, Policy, PolicyWithCache};
 use crate::utils::*;
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rand::prelude::*;
 use rand::{distributions::Distribution, distributions::WeightedIndex};
 use std::default::Default;
@@ -13,7 +13,7 @@ use tch::{
     nn::{Adam, OptimizerConfig, VarStore},
 };
 
-pub fn alpha_zero<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
+pub fn alpha_zero<G: 'static + Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
     cfg: &LearningConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // set up directory structure
@@ -27,11 +27,10 @@ pub fn alpha_zero<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
 
     // seed rngs
     tch::manual_seed(cfg.seed as i64);
-    let mut rng = StdRng::seed_from_u64(cfg.seed);
 
     // init policy
     let vs = VarStore::new(tch::Device::Cpu);
-    let mut policy = P::new(&vs);
+    let policy = P::new(&vs);
     let mut opt = Adam::default().build(&vs, cfg.lr_schedule[0].1)?;
     if cfg.weight_decay > 0.0 {
         opt.set_weight_decay(cfg.weight_decay);
@@ -48,7 +47,7 @@ pub fn alpha_zero<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
         // gather data
         {
             let _guard = tch::no_grad_guard();
-            gather_experience(cfg, &mut policy, &mut rng, &mut buffer);
+            gather_experience::<G, P, N>(cfg, format!("model_{}.ot", i_iter), &mut buffer);
         }
 
         // convert buffer data to tensors
@@ -117,52 +116,86 @@ pub fn alpha_zero<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
     Ok(())
 }
 
-fn gather_experience<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
+fn gather_experience<G: 'static + Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
     cfg: &LearningConfig,
-    policy: &mut P,
-    rng: &mut R,
+    policy_name: String,
     buffer: &mut ReplayBuffer<G, N>,
 ) {
-    let num_workers = cfg.num_threads + 1;
-    let num_games_per_thread = cfg.games_per_train / num_workers;
-    let num_games_in_main_thread = num_games_per_thread + cfg.games_per_train % num_workers;
-    assert_eq!(
-        num_games_per_thread * cfg.num_threads + num_games_in_main_thread,
-        cfg.games_per_train
-    );
+    let mut games_to_schedule = cfg.games_per_train;
+    let mut workers_left = cfg.num_workers + 1;
+    let mut handles = Vec::with_capacity(workers_left);
+    let multi_bar = MultiProgress::new();
 
-    for _ in 0..cfg.num_threads {
-        todo!("num_threads > 0 unsupported");
-        // TODO initialize multi progress bar
-        // TODO spawn a thread
+    // create workers
+    for _ in 0..cfg.num_workers + 1 {
+        // create copies of data for this worker
+        let worker_policy_name = policy_name.clone();
+        let worker_cfg = cfg.clone();
+
+        // calculate number of games this worker will run. this allows uneven number of games across workers
+        let num_games = games_to_schedule / workers_left;
+        let worker_bar = multi_bar.add(styled_progress_bar(num_games));
+
+        // spawn a worker
+        handles.push(std::thread::spawn(move || {
+            run_n_games::<G, P, N>(worker_cfg, worker_policy_name, num_games, worker_bar)
+        }));
+
+        games_to_schedule -= num_games;
+        workers_left -= 1;
     }
 
+    // sanity check that all games are scheduled
+    assert!(games_to_schedule == 0);
+    assert!(workers_left == 0);
+
+    // wait for workers to complete
+    multi_bar.join().unwrap();
+
+    // collect experience gathered into main buffer
     buffer.keep_last_n_games(cfg.games_to_keep - cfg.games_per_train);
-    let bar = ProgressBar::new(cfg.games_per_train as u64);
+    for handle in handles.drain(..) {
+        let mut worker_buffer = handle.join().unwrap();
+        buffer.extend(&mut worker_buffer);
+    }
+}
+
+fn styled_progress_bar(n: usize) -> ProgressBar {
+    let bar = ProgressBar::new(n as u64);
     bar.set_style(
         ProgressStyle::default_bar()
             .template("[{bar:40}] {percent}% {pos}/{len} {per_sec} {elapsed_precise}")
             .progress_chars("|| "),
     );
-    run_n_games(cfg, policy, rng, buffer, num_games_in_main_thread, bar);
+    bar
 }
 
-fn run_n_games<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
-    cfg: &LearningConfig,
-    policy: &mut P,
-    rng: &mut R,
-    buffer: &mut ReplayBuffer<G, N>,
+fn run_n_games<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
+    cfg: LearningConfig,
+    policy_name: String,
     num_games: usize,
     progress_bar: ProgressBar,
-) {
-    let mut cached_policy = PolicyWithCache::with_capacity(100 * cfg.games_per_train, policy);
+) -> ReplayBuffer<G, N> {
+    let mut buffer = ReplayBuffer::new(64 * num_games);
+    let mut rng = thread_rng();
 
+    // load the policy weights
+    let mut vs = VarStore::new(tch::Device::Cpu);
+    let mut policy = P::new(&vs);
+    vs.load(cfg.logs.join("models").join(&policy_name)).unwrap();
+
+    // create a cache for this policy, this speeds things up a lot, but takes memory
+    let mut cached_policy = PolicyWithCache::with_capacity(100 * cfg.games_per_train, &mut policy);
+
+    // run all the games
     for _ in 0..num_games {
         buffer.new_game();
-        run_game(cfg, &mut cached_policy, rng, buffer);
+        run_game(&cfg, &mut cached_policy, &mut rng, &mut buffer);
         progress_bar.inc(1);
     }
     progress_bar.finish();
+
+    buffer
 }
 
 struct StateInfo {

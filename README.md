@@ -19,6 +19,7 @@ This repo is a cargo workspace made up of multiple crates & binaries:
 - 💡 An AlphaZero [4] learner that collects experience using MCTS+NN and trains a policy and value function
   - Supports multiple value targets
   - All hyperparameters exposed
+  - Multi threaded support! 👩‍👩‍👧‍👧
 - 📈 Lightweight evaluation against standard rollout mcts with various number of explores
   - Saves game outcomes to a pgn file
   - Runs bayeselo [5] executable to produce elo ratings
@@ -59,7 +60,7 @@ This repo is a cargo workspace made up of multiple crates & binaries:
 
 ###### Performance
 - [x] compiler flags (LTO=fat, codegen-units=1, target=native)
-- [ ] multi threaded gather_experience
+- [x] multi threaded gather_experience
 - [ ] Reduce allocations (pre allocated buffer for MCTS nodes?)
 - [ ] speed up conv2d with im2col https://leonardoaraujosantos.gitbook.io/artificial-inteligence/machine_learning/deep_learning/convolution_layer/making_faster
   - [ ] https://sahnimanas.github.io/post/anatomy-of-a-high-performance-convolution/

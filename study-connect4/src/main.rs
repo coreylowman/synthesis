@@ -5,7 +5,7 @@ use crate::connect4::Connect4;
 use crate::policies::*;
 use synthesis::prelude::*;
 
-fn learn<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
+fn learn<G: 'static + Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let cfg = LearningConfig {
         seed: 0,
@@ -24,17 +24,18 @@ fn learn<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
         games_to_keep: 20000,
         games_per_train: 1000,
 
-        num_threads: 0,
+        num_workers: 6,
         num_explores: 1600,
         num_random_actions: 1,
         sample_action_until: 64,
         stop_games_when_solved: false,
         noise: RolloutNoise::None,
         learner_mcts_cfg: MCTSConfig {
-            exploration: Exploration::PolynomialUct { c: 4.0 },
+            exploration: Exploration::PolynomialUct { c: 3.0 },
             action_selection: ActionSelection::NumVisits,
             solve: true,
             fpu: Fpu::Const(1.0),
+            discount: 0.99,
         },
 
         baseline_best_k: 10,
@@ -43,6 +44,7 @@ fn learn<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
             action_selection: ActionSelection::Q,
             solve: true,
             fpu: Fpu::Const(f32::INFINITY),
+            discount: 1.0,
         },
         baseline_num_games: 10,
         baseline_explores: vec![800, 1600, 3200, 6400, 12800, 25600, 51200, 102400, 204800],
