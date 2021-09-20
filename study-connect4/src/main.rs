@@ -29,7 +29,10 @@ fn learn<G: 'static + Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>
         num_random_actions: 1,
         sample_action_until: 64,
         stop_games_when_solved: false,
-        noise: RolloutNoise::None,
+        noise: RolloutNoise::Dirichlet {
+            alpha: 1.0,
+            weight: 0.25,
+        },
         learner_mcts_cfg: MCTSConfig {
             exploration: Exploration::PolynomialUct { c: 3.0 },
             action_selection: ActionSelection::NumVisits,
