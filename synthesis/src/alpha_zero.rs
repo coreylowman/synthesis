@@ -47,7 +47,7 @@ pub fn alpha_zero<G: 'static + Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const 
         // gather data
         {
             let _guard = tch::no_grad_guard();
-            gather_experience::<G, P, N>(cfg, format!("model_{}.ot", i_iter), &mut buffer);
+            gather_experience::<G, P, N>(cfg, format!("model_{}.ot", i_iter), &mut buffer, i_iter);
         }
 
         // convert buffer data to tensors
@@ -120,6 +120,7 @@ fn gather_experience<G: 'static + Game<N>, P: Policy<G, N> + NNPolicy<G, N>, con
     cfg: &LearningConfig,
     policy_name: String,
     buffer: &mut ReplayBuffer<G, N>,
+    seed: usize,
 ) {
     let mut games_to_schedule = cfg.games_per_train;
     let mut workers_left = cfg.num_workers + 1;
@@ -127,7 +128,7 @@ fn gather_experience<G: 'static + Game<N>, P: Policy<G, N> + NNPolicy<G, N>, con
     let multi_bar = MultiProgress::new();
 
     // create workers
-    for _ in 0..cfg.num_workers + 1 {
+    for i_worker in 0..cfg.num_workers + 1 {
         // create copies of data for this worker
         let worker_policy_name = policy_name.clone();
         let worker_cfg = cfg.clone();
@@ -135,10 +136,16 @@ fn gather_experience<G: 'static + Game<N>, P: Policy<G, N> + NNPolicy<G, N>, con
         // calculate number of games this worker will run. this allows uneven number of games across workers
         let num_games = games_to_schedule / workers_left;
         let worker_bar = multi_bar.add(styled_progress_bar(num_games));
-
+        let worker_seed = seed * (cfg.num_workers + 1) + i_worker;
         // spawn a worker
         handles.push(std::thread::spawn(move || {
-            run_n_games::<G, P, N>(worker_cfg, worker_policy_name, num_games, worker_bar)
+            run_n_games::<G, P, N>(
+                worker_cfg,
+                worker_policy_name,
+                num_games,
+                worker_bar,
+                worker_seed,
+            )
         }));
 
         games_to_schedule -= num_games;
@@ -175,9 +182,10 @@ fn run_n_games<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
     policy_name: String,
     num_games: usize,
     progress_bar: ProgressBar,
+    seed: usize,
 ) -> ReplayBuffer<G, N> {
     let mut buffer = ReplayBuffer::new(64 * num_games);
-    let mut rng = thread_rng();
+    let mut rng = StdRng::seed_from_u64(seed as u64);
 
     // load the policy weights
     let mut vs = VarStore::new(tch::Device::Cpu);
