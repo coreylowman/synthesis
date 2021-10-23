@@ -19,12 +19,13 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
 
     let mut best_k = Vec::with_capacity(cfg.baseline_best_k);
 
+    let baseline_seed_games = 5;
     for i in 0..cfg.baseline_explores.len() {
         for j in 0..cfg.baseline_explores.len() {
             if i == j {
                 continue;
             }
-            for seed in 0..50 {
+            for seed in 0..baseline_seed_games {
                 add_pgn_result(
                     &mut pgn,
                     &format!("VanillaMCTS{}", cfg.baseline_explores[i]),
@@ -42,6 +43,28 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
     }
 
     for i_iter in 0..cfg.num_iterations + 1 {
+        // add new games for baselines so they don't fall behind
+        for i in 0..cfg.baseline_explores.len() {
+            for j in 0..cfg.baseline_explores.len() {
+                if i == j {
+                    continue;
+                }
+                let seed = baseline_seed_games + i_iter;
+                add_pgn_result(
+                    &mut pgn,
+                    &format!("VanillaMCTS{}", cfg.baseline_explores[i]),
+                    &format!("VanillaMCTS{}", cfg.baseline_explores[j]),
+                    mcts_vs_mcts::<G, N>(
+                        &cfg,
+                        first_player,
+                        cfg.baseline_explores[i],
+                        cfg.baseline_explores[j],
+                        seed as u64,
+                    ),
+                )?;
+            }
+        }
+
         // wait for model to exist;
         let name = format!("model_{}.ot", i_iter);
         while !models_dir.join(&name).exists() {
