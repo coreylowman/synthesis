@@ -173,6 +173,7 @@ impl Connect4 {
 impl Game<WIDTH> for Connect4 {
     const NAME: &'static str = "Connect4";
     const NUM_PLAYERS: usize = 2;
+    const MAX_TURNS: usize = 63;
 
     type PlayerId = PlayerId;
     type Action = Column;

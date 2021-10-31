@@ -72,6 +72,7 @@ pub trait Game<const N: usize>: Eq + Hash + Clone + std::fmt::Debug + Send {
     type Features: PartialEq + Clone + std::fmt::Debug + Send;
 
     const MAX_NUM_ACTIONS: usize = N;
+    const MAX_TURNS: usize;
     const NAME: &'static str;
     const NUM_PLAYERS: usize;
     const DIMS: &'static [i64];

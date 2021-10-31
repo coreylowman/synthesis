@@ -1,6 +1,7 @@
 pub use crate::alpha_zero::alpha_zero;
 pub use crate::config::{
-    ActionSelection, Exploration, Fpu, LearningConfig, MCTSConfig, RolloutNoise, ValueTarget,
+    ActionSelection, EvaluationConfig, Exploration, Fpu, LearningConfig, MCTSConfig, PolicyNoise,
+    RolloutConfig, ValueTarget,
 };
 pub use crate::data::tensor;
 pub use crate::evaluator::evaluator;

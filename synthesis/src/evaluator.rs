@@ -7,7 +7,7 @@ use rand::prelude::{Rng, SeedableRng, StdRng};
 use tch::nn::VarStore;
 
 pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
-    cfg: &LearningConfig,
+    cfg: &EvaluationConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     std::thread::sleep(std::time::Duration::from_secs(1));
 
@@ -17,48 +17,25 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
     let _guard = tch::no_grad_guard();
     let first_player = G::new().player();
 
-    let mut best_k = Vec::with_capacity(cfg.baseline_best_k);
+    let mut best_k = Vec::with_capacity(cfg.num_best_policies);
 
-    let baseline_seed_games = 5;
-    for i in 0..cfg.baseline_explores.len() {
-        for j in 0..cfg.baseline_explores.len() {
-            if i == j {
-                continue;
-            }
-            for seed in 0..baseline_seed_games {
-                add_pgn_result(
-                    &mut pgn,
-                    &format!("VanillaMCTS{}", cfg.baseline_explores[i]),
-                    &format!("VanillaMCTS{}", cfg.baseline_explores[j]),
-                    mcts_vs_mcts::<G, N>(
-                        &cfg,
-                        first_player,
-                        cfg.baseline_explores[i],
-                        cfg.baseline_explores[j],
-                        seed as u64,
-                    ),
-                )?;
-            }
-        }
-    }
-
-    for i_iter in 0..cfg.num_iterations + 1 {
+    for i_iter in 0.. {
         // add new games for baselines so they don't fall behind
-        for i in 0..cfg.baseline_explores.len() {
-            for j in 0..cfg.baseline_explores.len() {
+        for i in 0..cfg.rollout_num_explores.len() {
+            for j in 0..cfg.rollout_num_explores.len() {
                 if i == j {
                     continue;
                 }
-                let seed = baseline_seed_games + i_iter;
+                let seed = i_iter;
                 add_pgn_result(
                     &mut pgn,
-                    &format!("VanillaMCTS{}", cfg.baseline_explores[i]),
-                    &format!("VanillaMCTS{}", cfg.baseline_explores[j]),
+                    &format!("VanillaMCTS{}", cfg.rollout_num_explores[i]),
+                    &format!("VanillaMCTS{}", cfg.rollout_num_explores[j]),
                     mcts_vs_mcts::<G, N>(
                         &cfg,
                         first_player,
-                        cfg.baseline_explores[i],
-                        cfg.baseline_explores[j],
+                        cfg.rollout_num_explores[i],
+                        cfg.rollout_num_explores[j],
                         seed as u64,
                     ),
                 )?;
@@ -85,9 +62,9 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
         let result = eval_against_random(&cfg, &mut policy, first_player.next());
         add_pgn_result(&mut pgn, &String::from("Random"), &name, result)?;
 
-        for &explores in cfg.baseline_explores.iter() {
+        for &explores in cfg.rollout_num_explores.iter() {
             let op_name = format!("VanillaMCTS{}", explores);
-            for seed in 0..cfg.baseline_num_games {
+            for seed in 0..cfg.num_games_against_rollout {
                 let result = eval_against_vanilla_mcts(
                     &cfg,
                     &mut policy,
@@ -120,13 +97,13 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
         plot_ratings(&cfg.logs)?;
 
         // update top k
-        if best_k.len() < cfg.baseline_best_k {
+        if best_k.len() < cfg.num_best_policies {
             best_k.push((name, policy));
         } else {
             let ranks = rankings(&cfg.logs)?;
             if ranks
                 .iter()
-                .take(cfg.baseline_best_k)
+                .take(cfg.num_best_policies)
                 .position(|n| n == &name)
                 .is_some()
             {
@@ -134,7 +111,7 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
                 match best_k.iter().position(|(n, _p)| {
                     ranks
                         .iter()
-                        .take(cfg.baseline_best_k)
+                        .take(cfg.num_best_policies)
                         .position(|n1| n1 == n)
                         .is_none()
                 }) {
@@ -151,7 +128,7 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
 }
 
 fn eval_against_random<G: Game<N>, P: Policy<G, N>, const N: usize>(
-    cfg: &LearningConfig,
+    cfg: &EvaluationConfig,
     policy: &mut P,
     player: G::PlayerId,
 ) -> f32 {
@@ -160,7 +137,13 @@ fn eval_against_random<G: Game<N>, P: Policy<G, N>, const N: usize>(
     let mut opponent = StdRng::seed_from_u64(0);
     loop {
         let action = if game.player() == player {
-            MCTS::exploit(cfg.num_explores, cfg.learner_mcts_cfg, policy, game.clone())
+            MCTS::exploit(
+                cfg.policy_num_explores,
+                cfg.policy_mcts_cfg,
+                policy,
+                game.clone(),
+                cfg.policy_action,
+            )
         } else {
             let num_actions = game.iter_actions().count() as u8;
             let i = opponent.gen_range(0..num_actions) as usize;
@@ -175,7 +158,7 @@ fn eval_against_random<G: Game<N>, P: Policy<G, N>, const N: usize>(
 }
 
 fn eval_against_old<G: Game<N>, P: Policy<G, N>, const N: usize>(
-    cfg: &LearningConfig,
+    cfg: &EvaluationConfig,
     p1: &mut P,
     p2: &mut P,
 ) -> f32 {
@@ -183,9 +166,21 @@ fn eval_against_old<G: Game<N>, P: Policy<G, N>, const N: usize>(
     let first_player = game.player();
     loop {
         let action = if game.player() == first_player {
-            MCTS::exploit(cfg.num_explores, cfg.learner_mcts_cfg, p1, game.clone())
+            MCTS::exploit(
+                cfg.policy_num_explores,
+                cfg.policy_mcts_cfg,
+                p1,
+                game.clone(),
+                cfg.policy_action,
+            )
         } else {
-            MCTS::exploit(cfg.num_explores, cfg.learner_mcts_cfg, p2, game.clone())
+            MCTS::exploit(
+                cfg.policy_num_explores,
+                cfg.policy_mcts_cfg,
+                p2,
+                game.clone(),
+                cfg.policy_action,
+            )
         };
         if game.step(&action) {
             break;
@@ -195,7 +190,7 @@ fn eval_against_old<G: Game<N>, P: Policy<G, N>, const N: usize>(
 }
 
 fn eval_against_vanilla_mcts<G: Game<N>, P: Policy<G, N>, const N: usize>(
-    cfg: &LearningConfig,
+    cfg: &EvaluationConfig,
     policy: &mut P,
     player: G::PlayerId,
     opponent_explores: usize,
@@ -207,13 +202,20 @@ fn eval_against_vanilla_mcts<G: Game<N>, P: Policy<G, N>, const N: usize>(
     let mut rollout_policy = RolloutPolicy { rng: &mut rng };
     loop {
         let action = if game.player() == player {
-            MCTS::exploit(cfg.num_explores, cfg.learner_mcts_cfg, policy, game.clone())
+            MCTS::exploit(
+                cfg.policy_num_explores,
+                cfg.policy_mcts_cfg,
+                policy,
+                game.clone(),
+                cfg.policy_action,
+            )
         } else {
             FrozenMCTS::exploit(
                 opponent_explores,
-                cfg.baseline_mcts_cfg,
+                cfg.rollout_mcts_cfg,
                 &mut rollout_policy,
                 game.clone(),
+                cfg.rollout_action,
             )
         };
 
@@ -225,7 +227,7 @@ fn eval_against_vanilla_mcts<G: Game<N>, P: Policy<G, N>, const N: usize>(
 }
 
 fn mcts_vs_mcts<G: Game<N>, const N: usize>(
-    cfg: &LearningConfig,
+    cfg: &EvaluationConfig,
     player: G::PlayerId,
     p1_explores: usize,
     p2_explores: usize,
@@ -242,9 +244,10 @@ fn mcts_vs_mcts<G: Game<N>, const N: usize>(
             } else {
                 p2_explores
             },
-            cfg.baseline_mcts_cfg,
+            cfg.rollout_mcts_cfg,
             &mut rollout_policy,
             game.clone(),
+            cfg.rollout_action,
         );
         if game.step(&action) {
             break;
@@ -331,10 +334,16 @@ pub struct FrozenMCTS<'a, G: Game<N>, P: Policy<G, N>, const N: usize> {
 }
 
 impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> FrozenMCTS<'a, G, P, N> {
-    pub fn exploit(explores: usize, cfg: MCTSConfig, policy: &'a mut P, game: G) -> G::Action {
+    pub fn exploit(
+        explores: usize,
+        cfg: MCTSConfig,
+        policy: &'a mut P,
+        game: G,
+        action_selection: ActionSelection,
+    ) -> G::Action {
         let mut mcts = Self::with_capacity(explores + 1, cfg, policy, game);
         mcts.explore_n(explores);
-        mcts.best_action()
+        mcts.best_action(action_selection)
     }
 
     pub fn with_capacity(capacity: usize, cfg: MCTSConfig, policy: &'a mut P, game: G) -> Self {
@@ -373,7 +382,7 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> FrozenMCTS<'a, G, P, N> {
         &mut self.nodes[(first_child - self.offset) as usize..(last_child - self.offset) as usize]
     }
 
-    pub fn best_action(&self) -> G::Action {
+    pub fn best_action(&self, action_selection: ActionSelection) -> G::Action {
         let root = self.node(self.root);
 
         let mut best_action = None;
@@ -386,7 +395,7 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> FrozenMCTS<'a, G, P, N> {
                 Some(Outcome::Win) => f32::NEG_INFINITY,
                 Some(Outcome::Draw) => 1e6,
                 Some(Outcome::Lose) => f32::INFINITY,
-                None => match self.cfg.action_selection {
+                None => match action_selection {
                     ActionSelection::Q => -child.cum_value / child.num_visits,
                     ActionSelection::NumVisits => child.num_visits,
                 },

@@ -1,4 +1,4 @@
-use crate::config::{LearningConfig, RolloutNoise, ValueTarget};
+use crate::config::{LearningConfig, RolloutConfig, ValueTarget};
 use crate::data::*;
 use crate::game::{Game, Outcome};
 use crate::mcts::MCTS;
@@ -20,7 +20,6 @@ pub fn alpha_zero<G: 'static + Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const 
     std::fs::create_dir_all(&cfg.logs)?;
     let models_dir = cfg.logs.join("models");
     std::fs::create_dir(&models_dir)?;
-    save(&cfg.logs, "cfg.json", cfg)?;
     save_str(&cfg.logs, "env_name", &G::NAME.into())?;
     save_str(&cfg.logs, "git_hash", &git_hash()?)?;
     save_str(&cfg.logs, "git_diff.patch", &git_diff()?)?;
@@ -38,7 +37,7 @@ pub fn alpha_zero<G: 'static + Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const 
     vs.save(models_dir.join(String::from("model_0.ot")))?;
 
     // init replay buffer
-    let mut buffer = ReplayBuffer::new(cfg.buffer_size);
+    let mut buffer = ReplayBuffer::new(256_000);
 
     // start learning!
     let mut dims = G::DIMS.to_owned();
@@ -76,11 +75,7 @@ pub fn alpha_zero<G: 'static + Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const 
 
             let mut epoch_loss = [0.0, 0.0];
             for (state, target_pi, target_v) in sampler {
-                // assert_eq!(state.size()[0], cfg.batch_size);
-
                 let (logits, v) = policy.forward(&state);
-                // assert_eq!(logits.size(), target_pi.size());
-                // assert_eq!(v.size(), target_v.size());
 
                 let log_pi = logits.log_softmax(-1, Kind::Float);
                 let pi_loss = batch_mean * log_pi.kl_div(&target_pi, tch::Reduction::Sum, false);
@@ -123,12 +118,12 @@ fn gather_experience<G: 'static + Game<N>, P: Policy<G, N> + NNPolicy<G, N>, con
     seed: usize,
 ) {
     let mut games_to_schedule = cfg.games_per_train;
-    let mut workers_left = cfg.num_workers + 1;
+    let mut workers_left = cfg.rollout_cfg.num_workers + 1;
     let mut handles = Vec::with_capacity(workers_left);
     let multi_bar = MultiProgress::new();
 
     // create workers
-    for i_worker in 0..cfg.num_workers + 1 {
+    for i_worker in 0..cfg.rollout_cfg.num_workers + 1 {
         // create copies of data for this worker
         let worker_policy_name = policy_name.clone();
         let worker_cfg = cfg.clone();
@@ -136,7 +131,7 @@ fn gather_experience<G: 'static + Game<N>, P: Policy<G, N> + NNPolicy<G, N>, con
         // calculate number of games this worker will run. this allows uneven number of games across workers
         let num_games = games_to_schedule / workers_left;
         let worker_bar = multi_bar.add(styled_progress_bar(num_games));
-        let worker_seed = seed * (cfg.num_workers + 1) + i_worker;
+        let worker_seed = seed * (cfg.rollout_cfg.num_workers + 1) + i_worker;
         // spawn a worker
         handles.push(std::thread::spawn(move || {
             run_n_games::<G, P, N>(
@@ -171,7 +166,7 @@ fn styled_progress_bar(n: usize) -> ProgressBar {
     let bar = ProgressBar::new(n as u64);
     bar.set_style(
         ProgressStyle::default_bar()
-            .template("[{bar:40}] {percent}% {pos}/{len} {per_sec} {elapsed_precise}")
+            .template("[{bar:40}] {pos}/{len} ({percent}%) | {eta} remaining | {elapsed_precise}")
             .progress_chars("|| "),
     );
     bar
@@ -184,7 +179,7 @@ fn run_n_games<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
     progress_bar: ProgressBar,
     seed: usize,
 ) -> ReplayBuffer<G, N> {
-    let mut buffer = ReplayBuffer::new(64 * num_games);
+    let mut buffer = ReplayBuffer::new(G::MAX_TURNS * num_games);
     let mut rng = StdRng::seed_from_u64(seed as u64);
 
     // load the policy weights
@@ -193,12 +188,13 @@ fn run_n_games<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
     vs.load(cfg.logs.join("models").join(&policy_name)).unwrap();
 
     // create a cache for this policy, this speeds things up a lot, but takes memory
-    let mut cached_policy = PolicyWithCache::with_capacity(100 * cfg.games_per_train, &mut policy);
+    let mut cached_policy =
+        PolicyWithCache::with_capacity(G::MAX_TURNS * cfg.games_per_train, &mut policy);
 
     // run all the games
     for _ in 0..num_games {
         buffer.new_game();
-        run_game(&cfg, &mut cached_policy, &mut rng, &mut buffer);
+        run_game(&cfg.rollout_cfg, &mut cached_policy, &mut rng, &mut buffer);
         progress_bar.inc(1);
     }
     progress_bar.finish();
@@ -225,7 +221,7 @@ impl StateInfo {
 }
 
 fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
-    cfg: &LearningConfig,
+    cfg: &RolloutConfig,
     policy: &mut P,
     rng: &mut R,
     buffer: &mut ReplayBuffer<G, N>,
@@ -234,18 +230,11 @@ fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
     let mut solution = None;
     let mut search_policy = [0.0; N];
     let mut num_turns = 0;
-    let mut state_infos = Vec::with_capacity(100);
+    let mut state_infos = Vec::with_capacity(G::MAX_TURNS);
 
     while solution.is_none() {
-        let mut mcts = MCTS::with_capacity(
-            cfg.num_explores + 1,
-            cfg.learner_mcts_cfg,
-            policy,
-            game.clone(),
-        );
-
-        // add in noise to search process
-        add_noise(cfg, &mut mcts, rng);
+        let mut mcts =
+            MCTS::with_capacity(cfg.num_explores + 1, cfg.mcts_cfg, policy, game.clone());
 
         // explore
         mcts.explore_n(cfg.num_explores);
@@ -256,7 +245,7 @@ fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
         state_infos.push(StateInfo::q(num_turns + 1, mcts.target_q()));
 
         // pick action
-        let action = sample_action(cfg, &mut mcts, &game, &search_policy, rng, num_turns);
+        let action = sample_action(&cfg, &mut mcts, &game, &search_policy, rng, num_turns);
         solution = mcts.solution(&action);
 
         let is_over = game.step(&action);
@@ -269,39 +258,23 @@ fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
     }
 
     fill_state_info(&mut state_infos, solution.unwrap().reversed());
-    store_rewards(cfg, buffer, &state_infos);
-}
-
-fn add_noise<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
-    cfg: &LearningConfig,
-    mcts: &mut MCTS<G, P, N>,
-    rng: &mut R,
-) {
-    match cfg.noise {
-        RolloutNoise::None => {}
-        RolloutNoise::Equal { weight } => {
-            mcts.add_equalizing_noise(weight);
-        }
-        RolloutNoise::Dirichlet { alpha, weight } => {
-            mcts.add_dirichlet_noise(rng, alpha, weight);
-        }
-    }
+    store_rewards(&cfg, buffer, &state_infos);
 }
 
 fn sample_action<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
-    cfg: &LearningConfig,
+    cfg: &RolloutConfig,
     mcts: &mut MCTS<G, P, N>,
     game: &G,
     search_policy: &[f32],
     rng: &mut R,
     num_turns: usize,
 ) -> G::Action {
-    let best = mcts.best_action();
+    let best = mcts.best_action(cfg.action);
     let solution = mcts.solution(&best);
-    let action = if num_turns < cfg.num_random_actions {
+    let action = if num_turns < cfg.random_actions_until {
         let n = rng.gen_range(0..game.iter_actions().count() as u8) as usize;
         game.iter_actions().nth(n).unwrap()
-    } else if num_turns < cfg.sample_action_until
+    } else if num_turns < cfg.sample_actions_until
         && (solution.is_none() || !cfg.stop_games_when_solved)
     {
         let dist = WeightedIndex::new(search_policy).unwrap();
@@ -324,7 +297,7 @@ fn fill_state_info(state_infos: &mut Vec<StateInfo>, mut outcome: Outcome) {
 }
 
 fn store_rewards<G: Game<N>, const N: usize>(
-    cfg: &LearningConfig,
+    cfg: &RolloutConfig,
     buffer: &mut ReplayBuffer<G, N>,
     state_infos: &Vec<StateInfo>,
 ) {
@@ -335,7 +308,7 @@ fn store_rewards<G: Game<N>, const N: usize>(
         *buffer_value = match cfg.value_target {
             ValueTarget::Q => state.q,
             ValueTarget::Z => state.z,
-            ValueTarget::QZaverage => 0.5 * (state.q + state.z),
+            ValueTarget::QZaverage { p } => p * state.q + (1.0 - p) * state.z,
             ValueTarget::QtoZ { from, to } => {
                 let p = (1.0 - state.t) * from + state.t * to;
                 state.q * (1.0 - p) + state.z * p

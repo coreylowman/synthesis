@@ -1,5 +1,4 @@
 use chrono::prelude::*;
-use serde::Serialize;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
@@ -8,14 +7,6 @@ use std::process::{Command, Stdio};
 pub fn train_dir(root: &'static str, tag: &'static str) -> std::io::Result<PathBuf> {
     let time = Local::now().format("%m-%d-%YT%H-%M-%SZ").to_string();
     Ok(Path::new(root).join(tag).join(time))
-}
-
-pub fn save<T: Serialize>(
-    path: &PathBuf,
-    filename: &'static str,
-    value: &T,
-) -> std::io::Result<()> {
-    save_str(path, filename, &serde_json::to_string(value)?)
 }
 
 pub fn save_str(path: &PathBuf, filename: &'static str, value: &String) -> std::io::Result<()> {

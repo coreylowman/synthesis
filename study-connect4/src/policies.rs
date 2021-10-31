@@ -21,7 +21,7 @@ impl NNPolicy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
             l_2: nn::linear(root / "l_2", 128, 96, Default::default()),
             l_3: nn::linear(root / "l_3", 96, 64, Default::default()),
             l_4: nn::linear(root / "l_4", 64, 48, Default::default()),
-            l_5: nn::linear(root / "l_5", 48, 10, Default::default()),
+            l_5: nn::linear(root / "l_5", 48, 12, Default::default()),
         }
     }
 
@@ -37,8 +37,12 @@ impl NNPolicy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
             .apply(&self.l_4)
             .relu()
             .apply(&self.l_5);
-        let mut ts = xs.split_with_sizes(&[9, 1], -1);
-        let value = ts.pop().unwrap();
+        let mut ts = xs.split_with_sizes(&[9, 3], -1);
+        let value_ps = ts.pop().unwrap().softmax(-1, tch::Kind::Float);
+        let t = Tensor::of_slice(&[-1.0, 0.0, 1.0]);
+        let value = (value_ps * t).sum1(&[-1], true, tch::Kind::Float);
+        // let mut ts = xs.split_with_sizes(&[9, 1], -1);
+        // let value = ts.pop().unwrap();
         let logits = ts.pop().unwrap();
         (logits, value)
     }

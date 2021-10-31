@@ -1,47 +1,79 @@
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy)]
 pub enum ValueTarget {
     Z,                           // Outcome of game {-1, 0, 1}
     Q,                           // Avg Value found while searching
-    QZaverage,                   // (Q + Z) / 2
+    QZaverage { p: f32 },        // (Q + Z) / 2
     QtoZ { from: f32, to: f32 }, // interpolate from Q to Z based on turns
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum Exploration {
     Uct { c: f32 },
     PolynomialUct { c: f32 },
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum ActionSelection {
     Q,         // avg value
     NumVisits, // num visits
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum Fpu {
     Const(f32),
     ParentQ,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct MCTSConfig {
     pub exploration: Exploration,
-    pub action_selection: ActionSelection,
     pub solve: bool,
+    pub select_solved_nodes: bool,
+    pub auto_extend: bool,
     pub fpu: Fpu,
+    pub root_policy_noise: PolicyNoise,
+    pub fpu_noise: fn() -> f32,
+    pub select_q_noise: fn() -> f32,
+    pub backprop_q_noise: fn() -> f32,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
-pub enum RolloutNoise {
+#[derive(Debug, Clone, Copy)]
+pub enum PolicyNoise {
     None,
     Equal { weight: f32 },
     Dirichlet { alpha: f32, weight: f32 },
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone, Copy)]
+pub struct RolloutConfig {
+    pub num_workers: usize,
+    pub num_explores: usize,
+    pub random_actions_until: usize,
+    pub sample_actions_until: usize,
+    pub stop_games_when_solved: bool,
+    pub value_target: ValueTarget,
+    pub action: ActionSelection,
+    pub mcts_cfg: MCTSConfig,
+}
+
+#[derive(Debug, Clone)]
+pub struct EvaluationConfig {
+    pub logs: std::path::PathBuf,
+
+    pub policy_num_explores: usize,
+    pub policy_action: ActionSelection,
+    pub policy_mcts_cfg: MCTSConfig,
+
+    pub num_best_policies: usize,
+    pub num_games_against_best_policies: usize,
+
+    pub rollout_action: ActionSelection,
+    pub rollout_num_explores: Vec<usize>,
+    pub rollout_mcts_cfg: MCTSConfig,
+    pub num_games_against_rollout: usize,
+}
+
+#[derive(Debug, Clone)]
 pub struct LearningConfig {
     // general params
     pub seed: u64,
@@ -53,27 +85,11 @@ pub struct LearningConfig {
     pub num_iterations: usize,
     pub num_epochs: usize,
     pub batch_size: i64,
-    pub value_target: ValueTarget,
     pub policy_weight: f32,
     pub value_weight: f32,
 
-    // replay buffer params
-    pub buffer_size: usize,
     pub games_to_keep: usize,
     pub games_per_train: usize,
 
-    // runner params
-    pub num_workers: usize,
-    pub num_explores: usize,
-    pub num_random_actions: usize,
-    pub sample_action_until: usize,
-    pub noise: RolloutNoise,
-    pub stop_games_when_solved: bool,
-
-    pub learner_mcts_cfg: MCTSConfig,
-
-    pub baseline_best_k: usize,
-    pub baseline_mcts_cfg: MCTSConfig,
-    pub baseline_num_games: usize,
-    pub baseline_explores: Vec<usize>,
+    pub rollout_cfg: RolloutConfig,
 }
