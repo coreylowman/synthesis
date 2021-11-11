@@ -48,6 +48,7 @@ This repo is a cargo workspace made up of multiple crates & binaries:
 - [ ] mix mcst tree and minimax tree (of solved nodes) using p(correct)
 - [ ] Support transpositions (and backprop to multiple parents) while training... does this improve strength?
 - [ ] Score Bounded solver https://www.lamsade.dauphine.fr/~cazenave/papers/mcsolver.pdf
+- [ ] Ordinal MCTS https://arxiv.org/pdf/1901.04274.pdf
 - [ ] Regularized Policy Optimization https://arxiv.org/abs/2007.12509
 - [ ] Schedules for various parameters
   - [ ] sample_actions_until
