@@ -38,24 +38,23 @@ impl NNPolicy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
             .relu()
             .apply(&self.l_5);
         let mut ts = xs.split_with_sizes(&[9, 3], -1);
-        let value_ps = ts.pop().unwrap().softmax(-1, tch::Kind::Float);
-        let t = Tensor::of_slice(&[-1.0, 0.0, 1.0]);
-        let value = (value_ps * t).sum1(&[-1], true, tch::Kind::Float);
-        // let mut ts = xs.split_with_sizes(&[9, 1], -1);
-        // let value = ts.pop().unwrap();
-        let logits = ts.pop().unwrap();
-        (logits, value)
+        let outcome_logits = ts.pop().unwrap();
+        let policy_logits = ts.pop().unwrap();
+        (policy_logits, outcome_logits)
     }
 }
 
 impl Policy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
-    fn eval(&mut self, env: &Connect4) -> ([f32; Connect4::MAX_NUM_ACTIONS], f32) {
+    fn eval(&mut self, env: &Connect4) -> ([f32; Connect4::MAX_NUM_ACTIONS], [f32; 3]) {
         let xs = env.features();
         let t = tensor(&xs, Connect4::DIMS, tch::Kind::Float);
         let (logits, value) = self.forward(&t);
         let mut policy = [0.0f32; Connect4::MAX_NUM_ACTIONS];
         logits.copy_data(&mut policy, Connect4::MAX_NUM_ACTIONS);
-        let value = f32::from(&value).clamp(-1.0, 1.0);
-        (policy, value)
+        let mut outcomes = [0.0f32; 3];
+        value
+            .softmax(-1, tch::Kind::Float)
+            .copy_data(&mut outcomes, 3);
+        (policy, outcomes)
     }
 }
