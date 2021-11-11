@@ -28,21 +28,21 @@ def main():
                 num = int(parts[1].split("_")[1].split(".")[0])
                 scores[num] = elo
 
-    names = sorted(scores)
-    elos = [scores[name] - scores[0] for name in names]
-    plt.plot(names, elos, label="Learner")
-    plt.scatter(names, elos)
-    for name, elo in mcts_scores.items():
-        if elo - scores[0] < 0:
-            continue
-        plt.plot(
-            [names[0], names[-1]],
-            [elo - scores[0], elo - scores[0]],
-            linestyle="dashed",
-            label=name,
-        )
-        plt.text(names[-1], elo - scores[0], name.replace("VanillaMCTS", ""))
-    # plt.legend()
+    if len(scores) > 0:
+        names = sorted(scores)
+        elos = [scores[name] - scores[0] for name in names]
+        plt.plot(names, elos, label="Learner")
+        plt.scatter(names, elos)
+        for name, elo in mcts_scores.items():
+            if elo - scores[0] < 0:
+                continue
+            plt.plot(
+                [names[0], names[-1]],
+                [elo - scores[0], elo - scores[0]],
+                linestyle="dashed",
+                label=name,
+            )
+            plt.text(names[-1], elo - scores[0], name.replace("VanillaMCTS", ""))
     plt.title("Strength through training")
     plt.xlabel("Iteration")
     plt.ylim(bottom=-20)
