@@ -6,7 +6,7 @@ pub struct RolloutPolicy<'a, R: Rng> {
     pub rng: &'a mut R,
 }
 impl<'a, G: Game<N>, R: Rng, const N: usize> Policy<G, N> for RolloutPolicy<'a, R> {
-    fn eval(&mut self, game: &G) -> ([f32; N], f32) {
+    fn eval(&mut self, game: &G) -> ([f32; N], [f32; 3]) {
         let player = game.player();
         let mut rollout_game = game.clone();
         let mut is_over = game.is_over();
@@ -17,6 +17,16 @@ impl<'a, G: Game<N>, R: Rng, const N: usize> Policy<G, N> for RolloutPolicy<'a, 
             let action = rollout_game.iter_actions().nth(i as usize).unwrap();
             is_over = rollout_game.step(&action);
         }
-        ([0.0; N], rollout_game.reward(player))
+        let r = rollout_game.reward(player);
+        (
+            [0.0; N],
+            if r == 0.0 {
+                [0.0, 1.0, 0.0]
+            } else if r < 0.0 {
+                [1.0, 0.0, 0.0]
+            } else {
+                [0.0, 0.0, 1.0]
+            },
+        )
     }
 }

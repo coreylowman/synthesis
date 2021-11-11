@@ -2,7 +2,7 @@
 pub enum ValueTarget {
     Z,                           // Outcome of game {-1, 0, 1}
     Q,                           // Avg Value found while searching
-    QZaverage { p: f32 },        // (Q + Z) / 2
+    QZaverage { p: f32 },        // Q * p + Z * (1 - p)
     QtoZ { from: f32, to: f32 }, // interpolate from Q to Z based on turns
 }
 
@@ -22,19 +22,18 @@ pub enum ActionSelection {
 pub enum Fpu {
     Const(f32),
     ParentQ,
+    Func(fn() -> f32),
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct MCTSConfig {
     pub exploration: Exploration,
     pub solve: bool,
+    pub correct_values_on_solve: bool,
     pub select_solved_nodes: bool,
     pub auto_extend: bool,
     pub fpu: Fpu,
     pub root_policy_noise: PolicyNoise,
-    pub fpu_noise: fn() -> f32,
-    pub select_q_noise: fn() -> f32,
-    pub backprop_q_noise: fn() -> f32,
 }
 
 #[derive(Debug, Clone, Copy)]

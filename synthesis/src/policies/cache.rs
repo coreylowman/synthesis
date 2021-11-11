@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 pub struct PolicyWithCache<'a, G: Game<N>, P: Policy<G, N>, const N: usize> {
     pub policy: &'a mut P,
-    pub cache: HashMap<G, ([f32; N], f32)>,
+    pub cache: HashMap<G, ([f32; N], [f32; 3])>,
 }
 
 impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> PolicyWithCache<'a, G, P, N> {
@@ -19,7 +19,7 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> PolicyWithCache<'a, G, P, 
 impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> Policy<G, N>
     for PolicyWithCache<'a, G, P, N>
 {
-    fn eval(&mut self, game: &G) -> ([f32; N], f32) {
+    fn eval(&mut self, game: &G) -> ([f32; N], [f32; 3]) {
         match self.cache.get(&game) {
             Some(pi_v) => *pi_v,
             None => {
@@ -33,7 +33,7 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> Policy<G, N>
 
 pub struct OwnedPolicyWithCache<G: Game<N>, P: Policy<G, N>, const N: usize> {
     pub policy: P,
-    pub cache: HashMap<G, ([f32; N], f32)>,
+    pub cache: HashMap<G, ([f32; N], [f32; 3])>,
 }
 
 impl<G: Game<N>, P: Policy<G, N>, const N: usize> OwnedPolicyWithCache<G, P, N> {
@@ -46,7 +46,7 @@ impl<G: Game<N>, P: Policy<G, N>, const N: usize> OwnedPolicyWithCache<G, P, N> 
 }
 
 impl<G: Game<N>, P: Policy<G, N>, const N: usize> Policy<G, N> for OwnedPolicyWithCache<G, P, N> {
-    fn eval(&mut self, game: &G) -> ([f32; N], f32) {
+    fn eval(&mut self, game: &G) -> ([f32; N], [f32; 3]) {
         match self.cache.get(game) {
             Some(pi_v) => *pi_v,
             None => {

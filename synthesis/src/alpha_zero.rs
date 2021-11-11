@@ -55,7 +55,7 @@ pub fn alpha_zero<G: 'static + Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const 
         dims[0] = dedup.vs.len() as i64;
         let states = tensor(&dedup.states, &dims, Kind::Float);
         let target_pis = tensor(&dedup.pis, &[dims[0], N as i64], Kind::Float);
-        let target_vs = tensor(&dedup.vs, &[dims[0], 1], Kind::Float);
+        let target_vs = tensor(&dedup.vs, &[dims[0], 3], Kind::Float);
 
         // calculate lr from schedule
         let lr = cfg
@@ -75,11 +75,12 @@ pub fn alpha_zero<G: 'static + Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const 
 
             let mut epoch_loss = [0.0, 0.0];
             for (state, target_pi, target_v) in sampler {
-                let (logits, v) = policy.forward(&state);
+                let (pi_logits, v_logits) = policy.forward(&state);
 
-                let log_pi = logits.log_softmax(-1, Kind::Float);
+                let log_pi = pi_logits.log_softmax(-1, Kind::Float);
+                let log_v = v_logits.log_softmax(-1, Kind::Float);
                 let pi_loss = batch_mean * log_pi.kl_div(&target_pi, tch::Reduction::Sum, false);
-                let v_loss = v.mse_loss(&target_v, tch::Reduction::Mean);
+                let v_loss = batch_mean * log_v.kl_div(&target_v, tch::Reduction::Sum, false);
 
                 let loss = cfg.policy_weight * &pi_loss + cfg.value_weight * &v_loss;
                 opt.backward_step(&loss);
@@ -98,13 +99,18 @@ pub fn alpha_zero<G: 'static + Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const 
         target_pis.write_npy(cfg.logs.join("latest_pis.npy"))?;
         target_vs.write_npy(cfg.logs.join("latest_vs.npy"))?;
 
+        println!("Finished iteration {}", i_iter + 1);
         println!(
-            "Finished iteration {} | {} games played / {} steps taken | {} games / {} steps in replay buffer",
-            i_iter + 1,
-            buffer.total_games_played(),
+            "lifetime: {} steps / {} games ({:.3} steps/game)",
             buffer.total_steps(),
-            buffer.curr_games(),
+            buffer.total_games_played(),
+            buffer.total_steps() as f32 / buffer.total_games_played() as f32,
+        );
+        println!(
+            "buffer: {} steps / {} games ({:.3} steps/game)",
             buffer.curr_steps(),
+            buffer.curr_games(),
+            buffer.curr_steps() as f32 / buffer.curr_games() as f32,
         );
     }
 
@@ -205,17 +211,17 @@ fn run_n_games<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
 struct StateInfo {
     turn: usize,
     t: f32,
-    q: f32,
-    z: f32,
+    q: [f32; 3],
+    z: [f32; 3],
 }
 
 impl StateInfo {
-    fn q(turn: usize, q: f32) -> Self {
+    fn q(turn: usize, q: [f32; 3]) -> Self {
         Self {
             turn,
             t: 0.0,
             q,
-            z: 0.0,
+            z: [0.0; 3],
         }
     }
 }
@@ -241,7 +247,7 @@ fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
 
         // store in buffer
         mcts.target_policy(&mut search_policy);
-        buffer.add(&game, &search_policy, 0.0);
+        buffer.add(&game, &search_policy, [0.0; 3]);
         state_infos.push(StateInfo::q(num_turns + 1, mcts.target_q()));
 
         // pick action
@@ -290,7 +296,11 @@ fn sample_action<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
 fn fill_state_info(state_infos: &mut Vec<StateInfo>, mut outcome: Outcome) {
     let num_turns = state_infos.len();
     for state_value in state_infos.iter_mut().rev() {
-        state_value.z = outcome.value();
+        state_value.z[match outcome {
+            Outcome::Win(_) => 2,
+            Outcome::Draw(_) => 1,
+            Outcome::Lose(_) => 0,
+        }] = 1.0;
         state_value.t = state_value.turn as f32 / num_turns as f32;
         outcome = outcome.reversed();
     }
@@ -308,10 +318,20 @@ fn store_rewards<G: Game<N>, const N: usize>(
         *buffer_value = match cfg.value_target {
             ValueTarget::Q => state.q,
             ValueTarget::Z => state.z,
-            ValueTarget::QZaverage { p } => p * state.q + (1.0 - p) * state.z,
+            ValueTarget::QZaverage { p } => {
+                let mut value = [0.0; 3];
+                for i in 0..3 {
+                    value[i] = state.q[i] * p + state.z[i] * (1.0 - p);
+                }
+                value
+            }
             ValueTarget::QtoZ { from, to } => {
                 let p = (1.0 - state.t) * from + state.t * to;
-                state.q * (1.0 - p) + state.z * p
+                let mut value = [0.0; 3];
+                for i in 0..3 {
+                    value[i] = state.q[i] * (1.0 - p) + state.z[i] * p;
+                }
+                value
             }
         };
     }

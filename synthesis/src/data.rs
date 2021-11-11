@@ -92,14 +92,14 @@ pub fn tensor<T>(data: &[T], dims: &[i64], kind: tch::Kind) -> Tensor {
 pub struct FlatBatch<G: Game<N>, const N: usize> {
     pub states: Vec<G::Features>,
     pub pis: Vec<[f32; N]>,
-    pub vs: Vec<f32>,
+    pub vs: Vec<[f32; 3]>,
 }
 
 #[derive(Debug)]
 struct StateStatistics<G: Game<N>, const N: usize> {
     state: G::Features,
     sum_pi: [f32; N],
-    sum_v: f32,
+    sum_v: [f32; 3],
     num: u32,
 }
 
@@ -110,7 +110,7 @@ pub struct ReplayBuffer<G: Game<N>, const N: usize> {
     pub games: Vec<G>,
     pub states: Vec<G::Features>,
     pub pis: Vec<[f32; N]>,
-    pub vs: Vec<f32>,
+    pub vs: Vec<[f32; 3]>,
 }
 
 impl<G: Game<N>, const N: usize> ReplayBuffer<G, N> {
@@ -148,7 +148,7 @@ impl<G: Game<N>, const N: usize> ReplayBuffer<G, N> {
         self.vs.len()
     }
 
-    pub fn add(&mut self, game: &G, pi: &[f32; N], v: f32) {
+    pub fn add(&mut self, game: &G, pi: &[f32; N], v: [f32; 3]) {
         self.game_ids.push(self.game_id);
         self.steps += 1;
         self.games.push(game.clone());
@@ -202,13 +202,15 @@ impl<G: Game<N>, const N: usize> ReplayBuffer<G, N> {
                 .or_insert(StateStatistics {
                     state: self.states[i].clone(),
                     sum_pi: [0.0; N],
-                    sum_v: 0.0,
+                    sum_v: [0.0; 3],
                     num: 0,
                 });
             for j in 0..N {
                 stats.sum_pi[j] += self.pis[i][j];
             }
-            stats.sum_v += self.vs[i];
+            for j in 0..3 {
+                stats.sum_v[j] += self.vs[i][j];
+            }
             stats.num += 1;
         }
 
@@ -220,7 +222,10 @@ impl<G: Game<N>, const N: usize> ReplayBuffer<G, N> {
             for i in 0..N {
                 avg_pi[i] = stats.sum_pi[i] / stats.num as f32;
             }
-            let avg_v = stats.sum_v / stats.num as f32;
+            let mut avg_v = [0.0; 3];
+            for i in 0..3 {
+                avg_v[i] = stats.sum_v[i] / stats.num as f32;
+            }
             states.push(stats.state.clone());
             pis.push(avg_pi);
             vs.push(avg_v);
