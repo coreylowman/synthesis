@@ -8,19 +8,19 @@ pub trait HasTurnOrder: Eq + Clone + Copy + std::fmt::Debug {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Outcome {
-    Win,
-    Lose,
-    Draw,
+    Win(usize),
+    Lose(usize),
+    Draw(usize),
 }
 
 impl From<f32> for Outcome {
     fn from(value: f32) -> Self {
         if value > 0.0 {
-            Self::Win
+            Self::Win(0)
         } else if value < 0.0 {
-            Self::Lose
+            Self::Lose(0)
         } else {
-            Self::Draw
+            Self::Draw(0)
         }
     }
 }
@@ -28,17 +28,17 @@ impl From<f32> for Outcome {
 impl Outcome {
     pub fn reversed(&self) -> Self {
         match self {
-            Self::Win => Self::Lose,
-            Self::Lose => Self::Win,
-            Self::Draw => Self::Draw,
+            Self::Win(u) => Self::Lose(*u + 1),
+            Self::Lose(u) => Self::Win(*u + 1),
+            Self::Draw(u) => Self::Draw(*u + 1),
         }
     }
 
     pub fn value(&self) -> f32 {
         match self {
-            Self::Win => 1.0,
-            Self::Draw => 0.0,
-            Self::Lose => -1.0,
+            Self::Win(_) => 1.0,
+            Self::Draw(_) => 0.0,
+            Self::Lose(_) => -1.0,
         }
     }
 }
@@ -46,15 +46,15 @@ impl Outcome {
 impl Ord for Outcome {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self, other) {
-            (Self::Win, Self::Win) => Ordering::Equal,
-            (Self::Win, Self::Draw) => Ordering::Greater,
-            (Self::Win, Self::Lose) => Ordering::Greater,
-            (Self::Draw, Self::Win) => Ordering::Less,
-            (Self::Draw, Self::Draw) => Ordering::Equal,
-            (Self::Draw, Self::Lose) => Ordering::Greater,
-            (Self::Lose, Self::Win) => Ordering::Less,
-            (Self::Lose, Self::Draw) => Ordering::Less,
-            (Self::Lose, Self::Lose) => Ordering::Equal,
+            (Self::Win(a), Self::Win(b)) => b.cmp(a), // NOTE: reversed, want to win in least number of terms
+            (Self::Win(_a), Self::Draw(_b)) => Ordering::Greater,
+            (Self::Win(_a), Self::Lose(_b)) => Ordering::Greater,
+            (Self::Draw(_a), Self::Win(_b)) => Ordering::Less,
+            (Self::Draw(a), Self::Draw(b)) => a.cmp(b),
+            (Self::Draw(_a), Self::Lose(_b)) => Ordering::Greater,
+            (Self::Lose(_a), Self::Win(_b)) => Ordering::Less,
+            (Self::Lose(_a), Self::Draw(_b)) => Ordering::Less,
+            (Self::Lose(a), Self::Lose(b)) => a.cmp(b),
         }
     }
 }
@@ -93,50 +93,50 @@ mod tests {
 
     #[test]
     fn test_cmp_outcome() {
-        assert_eq!(Outcome::Win.cmp(&Outcome::Win), Ordering::Equal);
-        assert_eq!(Outcome::Win.cmp(&Outcome::Draw), Ordering::Greater);
-        assert_eq!(Outcome::Win.cmp(&Outcome::Lose), Ordering::Greater);
+        assert_eq!(Outcome::Win(0).cmp(&Outcome::Win(0)), Ordering::Equal);
+        assert_eq!(Outcome::Win(0).cmp(&Outcome::Draw(0)), Ordering::Greater);
+        assert_eq!(Outcome::Win(0).cmp(&Outcome::Lose(0)), Ordering::Greater);
 
-        assert_eq!(Outcome::Draw.cmp(&Outcome::Win), Ordering::Less);
-        assert_eq!(Outcome::Draw.cmp(&Outcome::Draw), Ordering::Equal);
-        assert_eq!(Outcome::Draw.cmp(&Outcome::Lose), Ordering::Greater);
+        assert_eq!(Outcome::Draw(0).cmp(&Outcome::Win(0)), Ordering::Less);
+        assert_eq!(Outcome::Draw(0).cmp(&Outcome::Draw(0)), Ordering::Equal);
+        assert_eq!(Outcome::Draw(0).cmp(&Outcome::Lose(0)), Ordering::Greater);
 
-        assert_eq!(Outcome::Lose.cmp(&Outcome::Win), Ordering::Less);
-        assert_eq!(Outcome::Lose.cmp(&Outcome::Draw), Ordering::Less);
-        assert_eq!(Outcome::Lose.cmp(&Outcome::Lose), Ordering::Equal);
+        assert_eq!(Outcome::Lose(0).cmp(&Outcome::Win(0)), Ordering::Less);
+        assert_eq!(Outcome::Lose(0).cmp(&Outcome::Draw(0)), Ordering::Less);
+        assert_eq!(Outcome::Lose(0).cmp(&Outcome::Lose(0)), Ordering::Equal);
     }
 
     #[test]
     fn test_ord_outcome() {
-        assert!(Outcome::Win == Outcome::Win);
-        assert!(Outcome::Win > Outcome::Draw);
-        assert!(Outcome::Win > Outcome::Lose);
+        assert!(Outcome::Win(0) == Outcome::Win(0));
+        assert!(Outcome::Win(0) > Outcome::Draw(0));
+        assert!(Outcome::Win(0) > Outcome::Lose(0));
 
-        assert!(Outcome::Draw < Outcome::Win);
-        assert!(Outcome::Draw == Outcome::Draw);
-        assert!(Outcome::Draw > Outcome::Lose);
+        assert!(Outcome::Draw(0) < Outcome::Win(0));
+        assert!(Outcome::Draw(0) == Outcome::Draw(0));
+        assert!(Outcome::Draw(0) > Outcome::Lose(0));
 
-        assert!(Outcome::Lose < Outcome::Win);
-        assert!(Outcome::Lose < Outcome::Draw);
-        assert!(Outcome::Lose == Outcome::Lose);
+        assert!(Outcome::Lose(0) < Outcome::Win(0));
+        assert!(Outcome::Lose(0) < Outcome::Draw(0));
+        assert!(Outcome::Lose(0) == Outcome::Lose(0));
     }
 
     #[test]
     fn test_partial_ord_outcome() {
-        assert!(Some(Outcome::Win) > None);
-        assert!(Some(Outcome::Draw) > None);
-        assert!(Some(Outcome::Lose) > None);
+        assert!(Some(Outcome::Win(0)) > None);
+        assert!(Some(Outcome::Draw(0)) > None);
+        assert!(Some(Outcome::Lose(0)) > None);
 
-        assert!(Some(Outcome::Win) == Some(Outcome::Win));
-        assert!(Some(Outcome::Win) > Some(Outcome::Draw));
-        assert!(Some(Outcome::Win) > Some(Outcome::Lose));
+        assert!(Some(Outcome::Win(0)) == Some(Outcome::Win(0)));
+        assert!(Some(Outcome::Win(0)) > Some(Outcome::Draw(0)));
+        assert!(Some(Outcome::Win(0)) > Some(Outcome::Lose(0)));
 
-        assert!(Some(Outcome::Draw) < Some(Outcome::Win));
-        assert!(Some(Outcome::Draw) == Some(Outcome::Draw));
-        assert!(Some(Outcome::Draw) > Some(Outcome::Lose));
+        assert!(Some(Outcome::Draw(0)) < Some(Outcome::Win(0)));
+        assert!(Some(Outcome::Draw(0)) == Some(Outcome::Draw(0)));
+        assert!(Some(Outcome::Draw(0)) > Some(Outcome::Lose(0)));
 
-        assert!(Some(Outcome::Lose) < Some(Outcome::Win));
-        assert!(Some(Outcome::Lose) < Some(Outcome::Draw));
-        assert!(Some(Outcome::Lose) == Some(Outcome::Lose));
+        assert!(Some(Outcome::Lose(0)) < Some(Outcome::Win(0)));
+        assert!(Some(Outcome::Lose(0)) < Some(Outcome::Draw(0)));
+        assert!(Some(Outcome::Lose(0)) == Some(Outcome::Lose(0)));
     }
 }
