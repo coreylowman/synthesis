@@ -21,7 +21,8 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
 
     for i_iter in 0.. {
         // add new games for baselines so they don't fall behind
-        for i in 0..cfg.rollout_num_explores.len() {
+        {
+            let i = i_iter % cfg.rollout_num_explores.len();
             for j in 0..cfg.rollout_num_explores.len() {
                 if i == j {
                     continue;
@@ -40,6 +41,8 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
                     ),
                 )?;
             }
+            calculate_ratings(&cfg.logs)?;
+            plot_ratings(&cfg.logs)?;
         }
 
         // wait for model to exist;
@@ -55,17 +58,12 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
         let mut vs = VarStore::new(tch::Device::Cpu);
         let mut policy = P::new(&vs);
         vs.load(models_dir.join(&name))?;
-        // let mut policy = OwnedPolicyWithCache::with_capacity(100_000, policy);
 
-        let result = eval_against_random(&cfg, &mut policy, first_player);
-        add_pgn_result(&mut pgn, &name, &String::from("Random"), result)?;
-        let result = eval_against_random(&cfg, &mut policy, first_player.next());
-        add_pgn_result(&mut pgn, &String::from("Random"), &name, result)?;
-
+        // evaluate against rollout mcts
         for &explores in cfg.rollout_num_explores.iter() {
             let op_name = format!("VanillaMCTS{}", explores);
             for seed in 0..cfg.num_games_against_rollout {
-                let result = eval_against_vanilla_mcts(
+                let result = eval_against_rollout_mcts(
                     &cfg,
                     &mut policy,
                     first_player,
@@ -73,7 +71,7 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
                     seed as u64,
                 );
                 add_pgn_result(&mut pgn, &name, &op_name, result)?;
-                let result = eval_against_vanilla_mcts(
+                let result = eval_against_rollout_mcts(
                     &cfg,
                     &mut policy,
                     first_player.next(),
@@ -82,8 +80,11 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
                 );
                 add_pgn_result(&mut pgn, &op_name, &name, result)?;
             }
+            calculate_ratings(&cfg.logs)?;
+            plot_ratings(&cfg.logs)?;
         }
 
+        // evaluate against best old policies
         for (prev_name, prev_p) in best_k.iter_mut() {
             let result = eval_against_old(&cfg, &mut policy, prev_p);
             add_pgn_result(&mut pgn, &name, &prev_name, result)?;
@@ -127,36 +128,6 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
     Ok(())
 }
 
-fn eval_against_random<G: Game<N>, P: Policy<G, N>, const N: usize>(
-    cfg: &EvaluationConfig,
-    policy: &mut P,
-    player: G::PlayerId,
-) -> f32 {
-    let mut game = G::new();
-    let first_player = game.player();
-    let mut opponent = StdRng::seed_from_u64(0);
-    loop {
-        let action = if game.player() == player {
-            MCTS::exploit(
-                cfg.policy_num_explores,
-                cfg.policy_mcts_cfg,
-                policy,
-                game.clone(),
-                cfg.policy_action,
-            )
-        } else {
-            let num_actions = game.iter_actions().count() as u8;
-            let i = opponent.gen_range(0..num_actions) as usize;
-            game.iter_actions().nth(i).unwrap()
-        };
-
-        if game.step(&action) {
-            break;
-        }
-    }
-    game.reward(first_player)
-}
-
 fn eval_against_old<G: Game<N>, P: Policy<G, N>, const N: usize>(
     cfg: &EvaluationConfig,
     p1: &mut P,
@@ -189,7 +160,7 @@ fn eval_against_old<G: Game<N>, P: Policy<G, N>, const N: usize>(
     game.reward(first_player)
 }
 
-fn eval_against_vanilla_mcts<G: Game<N>, P: Policy<G, N>, const N: usize>(
+fn eval_against_rollout_mcts<G: Game<N>, P: Policy<G, N>, const N: usize>(
     cfg: &EvaluationConfig,
     policy: &mut P,
     player: G::PlayerId,
@@ -392,9 +363,9 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> FrozenMCTS<'a, G, P, N> {
                 continue;
             }
             let value = match child.solution {
-                Some(Outcome::Win) => f32::NEG_INFINITY,
-                Some(Outcome::Draw) => 1e6,
-                Some(Outcome::Lose) => f32::INFINITY,
+                Some(Outcome::Win(_)) => f32::NEG_INFINITY,
+                Some(Outcome::Draw(_)) => 1e6,
+                Some(Outcome::Lose(_)) => f32::INFINITY,
                 None => match action_selection {
                     ActionSelection::Q => -child.cum_value / child.num_visits,
                     ActionSelection::NumVisits => child.num_visits,
@@ -467,7 +438,7 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> FrozenMCTS<'a, G, P, N> {
         let first_child = self.next_node_id();
         let node = self.node(node_id);
         let game = node.game.clone();
-        let (logits, value) = self.policy.eval(&game);
+        let (logits, dist) = self.policy.eval(&game);
         let mut num_children = 0;
         let mut any_solved = false;
         let mut max_logit = f32::NEG_INFINITY;
@@ -503,6 +474,8 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> FrozenMCTS<'a, G, P, N> {
             child.action_prob /= total;
         }
 
+        let value = dist[2] - dist[0];
+
         (value, any_solved)
     }
 
@@ -524,15 +497,15 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> FrozenMCTS<'a, G, P, N> {
                 }
 
                 let node = self.mut_node(node_id);
-                if worst_solution == Some(Outcome::Lose) {
+                if let Some(Outcome::Lose(_)) = worst_solution {
                     // at least 1 is a win, so mark this node as a win
-                    node.mark_solved(Outcome::Win);
+                    node.mark_solved(Outcome::Win(0));
                     value = -node.cum_value + (node.num_visits + 1.0);
                 } else if node.is_visited() && all_solved {
                     // all children node's are proven losses or draws
                     let best_for_me = worst_solution.unwrap().reversed();
                     node.mark_solved(best_for_me);
-                    if best_for_me == Outcome::Draw {
+                    if let Outcome::Draw(_) = best_for_me {
                         value = -node.cum_value;
                     } else {
                         value = -node.cum_value - (node.num_visits + 1.0);
