@@ -29,11 +29,8 @@ fn serialize_tensor(t: &tch::Tensor) -> String {
     let u8s: Vec<u8> = f32s
         .iter()
         .map(|f| {
-            f32_to_bf16(*f)
-                .to_be_bytes()
-                .iter()
-                .cloned()
-                .collect::<Vec<u8>>()
+            // f32_to_bf16(*f)
+            f.to_be_bytes().iter().cloned().collect::<Vec<u8>>()
         })
         .flatten()
         .collect();

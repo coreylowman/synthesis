@@ -3,7 +3,7 @@ use crate::game::*;
 use crate::mcts::MCTS;
 use crate::policies::*;
 use crate::utils::*;
-use rand::prelude::{Rng, SeedableRng, StdRng};
+use rand::prelude::{SeedableRng, StdRng};
 use tch::nn::VarStore;
 
 pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
@@ -33,16 +33,15 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
                     &format!("VanillaMCTS{}", cfg.rollout_num_explores[i]),
                     &format!("VanillaMCTS{}", cfg.rollout_num_explores[j]),
                     mcts_vs_mcts::<G, N>(
-                        &cfg,
                         first_player,
                         cfg.rollout_num_explores[i],
                         cfg.rollout_num_explores[j],
                         seed as u64,
                     ),
                 )?;
+                calculate_ratings(&cfg.logs)?;
+                plot_ratings(&cfg.logs)?;
             }
-            calculate_ratings(&cfg.logs)?;
-            plot_ratings(&cfg.logs)?;
         }
 
         // wait for model to exist;
@@ -79,9 +78,9 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
                     seed as u64,
                 );
                 add_pgn_result(&mut pgn, &op_name, &name, result)?;
+                calculate_ratings(&cfg.logs)?;
+                plot_ratings(&cfg.logs)?;
             }
-            calculate_ratings(&cfg.logs)?;
-            plot_ratings(&cfg.logs)?;
         }
 
         // evaluate against best old policies
@@ -183,10 +182,9 @@ fn eval_against_rollout_mcts<G: Game<N>, P: Policy<G, N>, const N: usize>(
         } else {
             FrozenMCTS::exploit(
                 opponent_explores,
-                cfg.rollout_mcts_cfg,
                 &mut rollout_policy,
                 game.clone(),
-                cfg.rollout_action,
+                ActionSelection::Q,
             )
         };
 
@@ -198,7 +196,6 @@ fn eval_against_rollout_mcts<G: Game<N>, P: Policy<G, N>, const N: usize>(
 }
 
 fn mcts_vs_mcts<G: Game<N>, const N: usize>(
-    cfg: &EvaluationConfig,
     player: G::PlayerId,
     p1_explores: usize,
     p2_explores: usize,
@@ -215,10 +212,9 @@ fn mcts_vs_mcts<G: Game<N>, const N: usize>(
             } else {
                 p2_explores
             },
-            cfg.rollout_mcts_cfg,
             &mut rollout_policy,
             game.clone(),
-            cfg.rollout_action,
+            ActionSelection::Q,
         );
         if game.step(&action) {
             break;
@@ -226,6 +222,19 @@ fn mcts_vs_mcts<G: Game<N>, const N: usize>(
     }
     game.reward(first_player)
 }
+
+const ROLLOUT_MCTS_CFG: MCTSConfig = MCTSConfig {
+    exploration: Exploration::Uct { c: 2.0 },
+    solver_cfg: SolverConfig {
+        solve: true,
+        correct_values: true,
+        select_solved_nodes: true,
+        remove_action_prob: false,
+    },
+    auto_extend: false,
+    fpu: Fpu::Const(f32::INFINITY),
+    root_policy_noise: None,
+};
 
 type NodeId = u32;
 type ActionId = u8;
@@ -307,12 +316,11 @@ pub struct FrozenMCTS<'a, G: Game<N>, P: Policy<G, N>, const N: usize> {
 impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> FrozenMCTS<'a, G, P, N> {
     pub fn exploit(
         explores: usize,
-        cfg: MCTSConfig,
         policy: &'a mut P,
         game: G,
         action_selection: ActionSelection,
     ) -> G::Action {
-        let mut mcts = Self::with_capacity(explores + 1, cfg, policy, game);
+        let mut mcts = Self::with_capacity(explores + 1, ROLLOUT_MCTS_CFG, policy, game);
         mcts.explore_n(explores);
         mcts.best_action(action_selection)
     }
@@ -485,7 +493,7 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> FrozenMCTS<'a, G, P, N> {
             let node = self.node(node_id);
             let parent = node.parent;
 
-            if self.cfg.solve && solved && node.is_unsolved() {
+            if self.cfg.solver_cfg.solve && solved && node.is_unsolved() {
                 let mut all_solved = true;
                 let mut worst_solution = None;
                 for child in self.children_of(node) {

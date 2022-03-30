@@ -8,8 +8,18 @@ pub enum ValueTarget {
 
 #[derive(Debug, Clone, Copy)]
 pub enum Exploration {
-    Uct { c: f32 },
-    PolynomialUct { c: f32 },
+    Uct {
+        c: f32,
+    },
+    PolynomialUct {
+        c: f32,
+    },
+    Sample,
+    Secure {
+        c: f32,
+        weight_fn: fn(f32, f32) -> f32,
+    },
+    None,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -22,37 +32,43 @@ pub enum ActionSelection {
 pub enum Fpu {
     Const(f32),
     ParentQ,
-    Func(fn() -> f32),
+    Func(fn(f32) -> f32),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SolverConfig {
+    pub solve: bool,
+    pub correct_values: bool,
+    pub select_solved_nodes: bool,
+    pub remove_action_prob: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct MCTSConfig {
-    pub exploration: Exploration,
-    pub solve: bool,
-    pub correct_values_on_solve: bool,
-    pub select_solved_nodes: bool,
     pub auto_extend: bool,
+    pub exploration: Exploration,
+    pub solver_cfg: SolverConfig,
     pub fpu: Fpu,
-    pub root_policy_noise: PolicyNoise,
+    pub root_policy_noise: Option<PolicyNoise>,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum PolicyNoise {
-    None,
-    Equal { weight: f32 },
-    Dirichlet { alpha: f32, weight: f32 },
+pub struct PolicyNoise {
+    pub weight: f32,
+    pub sample_fn: fn(usize) -> Vec<f32>,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct RolloutConfig {
     pub num_workers: usize,
-    pub num_explores: usize,
+    pub sample_num_explores: fn() -> usize,
     pub random_actions_until: usize,
     pub sample_actions_until: usize,
     pub stop_games_when_solved: bool,
     pub value_target: ValueTarget,
     pub action: ActionSelection,
     pub mcts_cfg: MCTSConfig,
+    pub sample_exploration: fn() -> Exploration,
 }
 
 #[derive(Debug, Clone)]
@@ -66,9 +82,7 @@ pub struct EvaluationConfig {
     pub num_best_policies: usize,
     pub num_games_against_best_policies: usize,
 
-    pub rollout_action: ActionSelection,
     pub rollout_num_explores: Vec<usize>,
-    pub rollout_mcts_cfg: MCTSConfig,
     pub num_games_against_rollout: usize,
 }
 

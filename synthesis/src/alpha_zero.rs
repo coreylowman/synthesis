@@ -7,7 +7,7 @@ use crate::utils::*;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rand::prelude::*;
 use rand::{distributions::Distribution, distributions::WeightedIndex};
-use std::default::Default;
+use std::io::prelude::*;
 use tch::{
     kind::Kind,
     nn::{Adam, OptimizerConfig, VarStore},
@@ -23,6 +23,11 @@ pub fn alpha_zero<G: 'static + Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const 
     save_str(&cfg.logs, "env_name", &G::NAME.into())?;
     save_str(&cfg.logs, "git_hash", &git_hash()?)?;
     save_str(&cfg.logs, "git_diff.patch", &git_diff()?)?;
+    let mut stats = std::fs::File::create(&cfg.logs.join("stats.csv"))?;
+    write!(
+        &mut stats,
+        "Iteration,LifetimeSteps,LifetimeGames,BufferSteps,BufferGames\n"
+    )?;
 
     // seed rngs
     tch::manual_seed(cfg.seed as i64);
@@ -30,10 +35,13 @@ pub fn alpha_zero<G: 'static + Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const 
     // init policy
     let vs = VarStore::new(tch::Device::Cpu);
     let policy = P::new(&vs);
-    let mut opt = Adam::default().build(&vs, cfg.lr_schedule[0].1)?;
-    if cfg.weight_decay > 0.0 {
-        opt.set_weight_decay(cfg.weight_decay);
+
+    let mut opt = Adam {
+        beta1: 0.9,
+        beta2: 0.999,
+        wd: cfg.weight_decay,
     }
+    .build(&vs, cfg.lr_schedule[0].1)?;
     vs.save(models_dir.join(String::from("model_0.ot")))?;
 
     // init replay buffer
@@ -112,6 +120,16 @@ pub fn alpha_zero<G: 'static + Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const 
             buffer.curr_games(),
             buffer.curr_steps() as f32 / buffer.curr_games() as f32,
         );
+        write!(
+            &mut stats,
+            "{},{},{},{},{}\n",
+            i_iter,
+            buffer.total_steps(),
+            buffer.total_games_played(),
+            buffer.curr_steps(),
+            buffer.curr_games()
+        )?;
+        plot_stats(&cfg.logs)?;
     }
 
     Ok(())
@@ -238,12 +256,15 @@ fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
     let mut num_turns = 0;
     let mut state_infos = Vec::with_capacity(G::MAX_TURNS);
 
+    let mut mcts_cfg = cfg.mcts_cfg;
+
     while solution.is_none() {
-        let mut mcts =
-            MCTS::with_capacity(cfg.num_explores + 1, cfg.mcts_cfg, policy, game.clone());
+        let num_explores = (cfg.sample_num_explores)();
+        mcts_cfg.exploration = (cfg.sample_exploration)();
+        let mut mcts = MCTS::with_capacity(num_explores + 1, mcts_cfg, policy, game.clone());
 
         // explore
-        mcts.explore_n(cfg.num_explores);
+        mcts.explore_n(num_explores);
 
         // store in buffer
         mcts.target_policy(&mut search_policy);

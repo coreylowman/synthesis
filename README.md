@@ -42,9 +42,10 @@ This repo is a cargo workspace made up of multiple crates & binaries:
 - [ ] Evaluation metrics in addition to elo:
   - [ ] Depth reached
   - [ ] Something for how quickly positions are solved
+  - [ ] something for over/under estimation of nodes
   - [ ] Search policy accuracy
-  - [ ] value accuracy against Q
-  - [ ] value accuracy against 2-ply minimax value
+  - [ ] value accuracy against
+  - [ ] value accuracy against minimax value
 - [ ] mix mcst tree and minimax tree (of solved nodes) using p(correct)
 - [ ] Support transpositions (and backprop to multiple parents) while training... does this improve strength?
 - [ ] Score Bounded solver https://www.lamsade.dauphine.fr/~cazenave/papers/mcsolver.pdf

@@ -80,6 +80,15 @@ pub fn plot_ratings(dir: &PathBuf) -> std::io::Result<()> {
     Ok(())
 }
 
+pub fn plot_stats(dir: &PathBuf) -> std::io::Result<()> {
+    let output = Command::new("python")
+        .arg("plot_stats.py")
+        .arg(dir.join("stats.csv").to_str().unwrap())
+        .status()?;
+    assert!(output.success());
+    Ok(())
+}
+
 pub fn rankings(dir: &PathBuf) -> std::io::Result<Vec<String>> {
     let file = File::open(dir.join("ratings"))?;
     let reader = std::io::BufReader::new(file);
