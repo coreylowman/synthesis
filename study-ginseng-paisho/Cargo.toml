@@ -1,0 +1,16 @@
+[package]
+name = "study-ginseng-paisho"
+version = "0.1.0"
+authors = ["Metagross31 <paisho@sthagel.site>"]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+synthesis = { path = "../synthesis" }
+slimnn = { path = "../slimnn" }
+tch = "0.4.1"
+rand = "0.8.3"
+rand_distr = "0.4.0"

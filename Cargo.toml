@@ -6,4 +6,5 @@ members = [
     "synthesis",
     "export",
     "study-connect4",
+    "study-ginseng-paisho",
 ]
