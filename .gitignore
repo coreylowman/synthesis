@@ -2,6 +2,7 @@
 /_logs
 /.vscode
 /_models
+_logs/
 .cargo
 .idea
 Cargo.lock
