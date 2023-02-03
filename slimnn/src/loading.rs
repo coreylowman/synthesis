@@ -1,8 +1,6 @@
-use base65536;
-
 fn bytes_to_floats(bytes: Vec<u8>) -> Vec<f32> {
     let mut floats = Vec::with_capacity(bytes.len() / 4);
-    assert!(bytes.len() % 4 == 0);
+    assert_eq!(bytes.len() % 4, 0);
     for i in (0..bytes.len()).step_by(4) {
         floats.push(f32::from_be_bytes([
             bytes[i],

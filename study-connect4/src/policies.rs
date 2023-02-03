@@ -14,8 +14,8 @@ impl NNPolicy<Connect4, { Connect4::MAX_NUM_ACTIONS }> for Connect4Net {
     fn new(vs: &nn::VarStore) -> Self {
         let root = &vs.root();
         let state_dims = Connect4::DIMS;
-        assert!(state_dims.len() == 4);
-        assert!(&state_dims == &[1, 1, 7, 9]);
+        assert_eq!(state_dims.len(), 4);
+        assert_eq!(state_dims, [1, 1, 7, 9]);
         Self {
             l_1: nn::linear(root / "l_1", 63, 128, Default::default()),
             l_2: nn::linear(root / "l_2", 128, 96, Default::default()),

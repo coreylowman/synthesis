@@ -16,9 +16,9 @@ impl<const I: usize, const O: usize> Default for Linear<I, O> {
 impl<const I: usize, const O: usize> Linear<I, O> {
     pub fn forward(&self, x: &[f32; I]) -> [f32; O] {
         let mut output = self.bias;
-        for i_input in 0..I {
-            for i_output in 0..O {
-                output[i_output] += x[i_input] * self.weight[i_output][i_input];
+        for (i_input, x_i) in x.iter().enumerate().take(I) {
+            for (i_output, o_i) in output.iter_mut().enumerate().take(O) {
+                *o_i += x_i * self.weight[i_output][i_input];
             }
         }
         output

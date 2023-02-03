@@ -1,9 +1,9 @@
-use base65536;
+
 use std::collections::HashMap;
 use std::env;
 use std::io::Write;
 use std::path::Path;
-use tch;
+
 
 pub fn f32_to_bf16(value: f32) -> u16 {
     // Convert to raw bytes
@@ -28,14 +28,10 @@ fn serialize_tensor(t: &tch::Tensor) -> String {
     let f32s: Vec<f32> = t.into();
     let u8s: Vec<u8> = f32s
         .iter()
-        .map(|f| {
+        .flat_map(|f| {
             f32_to_bf16(*f)
-                .to_be_bytes()
-                .iter()
-                .cloned()
-                .collect::<Vec<u8>>()
+                .to_be_bytes().to_vec()
         })
-        .flatten()
         .collect();
     base65536::encode(&u8s)
 }
@@ -46,7 +42,7 @@ fn serialize_tensors<P: AsRef<Path>>(
 ) -> Result<(), std::io::Error> {
     let mut names: Vec<String> = variables
         .iter()
-        .map(|(k, _)| String::from(k.split(".").next().unwrap()))
+        .map(|(k, _)| String::from(k.split('.').next().unwrap()))
         .collect();
     names.sort();
     names.dedup();
@@ -54,17 +50,15 @@ fn serialize_tensors<P: AsRef<Path>>(
     let mut f = std::fs::File::create(path)?;
     let mut i = 0;
     for name in names.iter() {
-        let weight_key = format!("{}.weight", name);
+        let weight_key = format!("{name}.weight");
         let weight_num_dims = variables.get(&weight_key).unwrap().size().len();
-        let bias_key = format!("{}.bias", name);
+        let bias_key = format!("{name}.bias");
         f.write_fmt(format_args!(
-            "load_{}d(&mut policy.{}, String::from(PARAMETERS[{}]));\n",
-            weight_num_dims, weight_key, i,
+            "load_{weight_num_dims}d(&mut policy.{weight_key}, String::from(PARAMETERS[{i}]));\n",
         ))?;
         i += 1;
         f.write_fmt(format_args!(
-            "load_1d(&mut policy.{}, String::from(PARAMETERS[{}]));\n",
-            bias_key, i,
+            "load_1d(&mut policy.{bias_key}, String::from(PARAMETERS[{i}]));\n",
         ))?;
         i += 1;
     }
@@ -75,25 +69,24 @@ fn serialize_tensors<P: AsRef<Path>>(
     ))?;
     let mut i = 0;
     for name in names.iter() {
-        let weight_key = format!("{}.weight", name);
-        let bias_key = format!("{}.bias", name);
-        let str_weight = serialize_tensor(&variables.get(&weight_key).unwrap());
-        let str_bias = serialize_tensor(&variables.get(&bias_key).unwrap());
+        let weight_key = format!("{name}.weight");
+        let bias_key = format!("{name}.bias");
+        let str_weight = serialize_tensor(variables.get(&weight_key).unwrap());
+        let str_bias = serialize_tensor(variables.get(&bias_key).unwrap());
         println!("{} - {} {}", name, str_weight.len(), str_bias.len());
         f.write_fmt(format_args!(
-            "// {} - {}\n\"{}\",\n\"{}\",\n",
-            name, i, str_weight, str_bias,
+            "// {name} - {i}\n\"{str_weight}\",\n\"{str_bias}\",\n",
         ))?;
         i += 2;
     }
-    f.write(b"];\n")?;
+    f.write_all(b"];\n")?;
 
     Ok(())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
-    assert!(args.len() == 3);
+    assert_eq!(args.len(), 3);
 
     let src_varstore_path = &args[1];
     let dst_params_path = &args[2];

@@ -51,7 +51,7 @@ impl<'a> Iterator for BatchRandSampler<'a> {
 
         let batch_inds = self
             .inds
-            .narrow(0, self.index as i64, (next_index - self.index) as i64);
+            .narrow(0, self.index, next_index - self.index);
         self.index = next_index;
 
         let item = (
@@ -163,10 +163,10 @@ impl<G: Game<N>, const N: usize> ReplayBuffer<G, N> {
         self.game_ids
             .extend(other.game_ids.iter().map(|&g| g + start));
         self.game_id += other.game_id;
-        self.games.extend(other.games.drain(..));
-        self.states.extend(other.states.drain(..));
-        self.pis.extend(other.pis.drain(..));
-        self.vs.extend(other.vs.drain(..));
+        self.games.append(&mut other.games);
+        self.states.append(&mut other.states);
+        self.pis.append(&mut other.pis);
+        self.vs.append(&mut other.vs);
     }
 
     pub fn keep_last_n_games(&mut self, n: usize) {
@@ -219,12 +219,12 @@ impl<G: Game<N>, const N: usize> ReplayBuffer<G, N> {
         let mut vs = Vec::with_capacity(statistics.len());
         for (_, stats) in statistics.iter() {
             let mut avg_pi = [0.0; N];
-            for i in 0..N {
-                avg_pi[i] = stats.sum_pi[i] / stats.num as f32;
+            for (i, avg_i) in avg_pi.iter_mut().enumerate().take(N) {
+                *avg_i = stats.sum_pi[i] / stats.num as f32;
             }
             let mut avg_v = [0.0; 3];
-            for i in 0..3 {
-                avg_v[i] = stats.sum_v[i] / stats.num as f32;
+            for (i, avg_i) in avg_v.iter_mut().enumerate() {
+                *avg_i = stats.sum_v[i] / stats.num as f32;
             }
             states.push(stats.state.clone());
             pis.push(avg_pi);

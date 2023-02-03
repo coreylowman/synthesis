@@ -20,7 +20,7 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> Policy<G, N>
     for PolicyWithCache<'a, G, P, N>
 {
     fn eval(&mut self, game: &G) -> ([f32; N], [f32; 3]) {
-        match self.cache.get(&game) {
+        match self.cache.get(game) {
             Some(pi_v) => *pi_v,
             None => {
                 let pi_v = self.policy.eval(game);

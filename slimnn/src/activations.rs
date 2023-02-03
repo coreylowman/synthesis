@@ -56,8 +56,9 @@ impl Activation for Softmax {
             y[i] = x[i].exp();
             total += y[i];
         }
-        for i in 0..N {
-            y[i] /= total;
+        //for i in 0..N {
+        for y_i in y.iter_mut().take(N) {
+            *y_i /= total;
         }
         y
     }

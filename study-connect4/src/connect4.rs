@@ -35,8 +35,8 @@ impl HasTurnOrder for PlayerId {
 }
 
 const FAB_COL: u64 = 0b1111111;
-const FAB_ROW: u64 = (1 << (7 * 0))
-    | (1 << (7 * 1))
+const FAB_ROW: u64 = (1 << 0)
+    | (1 << 7)
     | (1 << (7 * 2))
     | (1 << (7 * 3))
     | (1 << (7 * 4))
@@ -46,8 +46,8 @@ const FAB_ROW: u64 = (1 << (7 * 0))
     | (1 << (7 * 8));
 
 const COLS: [u64; WIDTH] = [
-    FAB_COL << (7 * 0),
-    FAB_COL << (7 * 1),
+    FAB_COL,
+    FAB_COL << 7,
     FAB_COL << (7 * 2),
     FAB_COL << (7 * 3),
     FAB_COL << (7 * 4),
@@ -58,7 +58,7 @@ const COLS: [u64; WIDTH] = [
 ];
 
 const ROWS: [u64; HEIGHT] = [
-    FAB_ROW << 0,
+    FAB_ROW,
     FAB_ROW << 1,
     FAB_ROW << 2,
     FAB_ROW << 3,
@@ -129,9 +129,9 @@ impl From<usize> for Column {
     }
 }
 
-impl Into<usize> for Column {
-    fn into(self) -> usize {
-        self.0 as usize
+impl From<Column> for usize {
+    fn from(val: Column) -> Self {
+        val.0 as usize
     }
 }
 
@@ -361,13 +361,13 @@ mod tests {
         assert!(!game.step(&Column(0)));
         assert!(!game.step(&Column(1)));
 
-        assert!(game.iter_actions().position(|c| c == Column(0)).is_some());
+        assert!(game.iter_actions().any(|c| c == Column(0)));
         assert!(!game.step(&Column(0)));
-        assert!(game.iter_actions().position(|c| c == Column(0)).is_none());
+        assert!(!game.iter_actions().any(|c| c == Column(0)));
 
-        assert!(game.iter_actions().position(|c| c == Column(1)).is_some());
+        assert!(game.iter_actions().any(|c| c == Column(1)));
         assert!(!game.step(&Column(1)));
-        assert!(game.iter_actions().position(|c| c == Column(1)).is_none());
+        assert!(!game.iter_actions().any(|c| c == Column(1)));
 
         assert!(!game.step(&Column(2)));
         assert!(!game.step(&Column(3)));
@@ -382,13 +382,13 @@ mod tests {
         assert!(!game.step(&Column(2)));
         assert!(!game.step(&Column(3)));
 
-        assert!(game.iter_actions().position(|c| c == Column(2)).is_some());
+        assert!(game.iter_actions().any(|c| c == Column(2)));
         assert!(!game.step(&Column(2)));
-        assert!(game.iter_actions().position(|c| c == Column(2)).is_none());
+        assert!(!game.iter_actions().any(|c| c == Column(2)));
 
-        assert!(game.iter_actions().position(|c| c == Column(3)).is_some());
+        assert!(game.iter_actions().any(|c| c == Column(3)));
         assert!(!game.step(&Column(3)));
-        assert!(game.iter_actions().position(|c| c == Column(3)).is_none());
+        assert!(!game.iter_actions().any(|c| c == Column(3)));
 
         assert!(!game.step(&Column(4)));
         assert!(!game.step(&Column(5)));
@@ -403,13 +403,13 @@ mod tests {
         assert!(!game.step(&Column(4)));
         assert!(!game.step(&Column(5)));
 
-        assert!(game.iter_actions().position(|c| c == Column(4)).is_some());
+        assert!(game.iter_actions().any(|c| c == Column(4)));
         assert!(!game.step(&Column(4)));
-        assert!(game.iter_actions().position(|c| c == Column(4)).is_none());
+        assert!(!game.iter_actions().any(|c| c == Column(4)));
 
-        assert!(game.iter_actions().position(|c| c == Column(5)).is_some());
+        assert!(game.iter_actions().any(|c| c == Column(5)));
         assert!(!game.step(&Column(5)));
-        assert!(game.iter_actions().position(|c| c == Column(5)).is_none());
+        assert!(!game.iter_actions().any(|c| c == Column(5)));
 
         assert!(!game.step(&Column(6)));
         assert!(!game.step(&Column(7)));
@@ -424,13 +424,13 @@ mod tests {
         assert!(!game.step(&Column(6)));
         assert!(!game.step(&Column(7)));
 
-        assert!(game.iter_actions().position(|c| c == Column(6)).is_some());
+        assert!(game.iter_actions().any(|c| c == Column(6)));
         assert!(!game.step(&Column(6)));
-        assert!(game.iter_actions().position(|c| c == Column(6)).is_none());
+        assert!(!game.iter_actions().any(|c| c == Column(6)));
 
-        assert!(game.iter_actions().position(|c| c == Column(7)).is_some());
+        assert!(game.iter_actions().any(|c| c == Column(7)));
         assert!(!game.step(&Column(7)));
-        assert!(game.iter_actions().position(|c| c == Column(7)).is_none());
+        assert!(!game.iter_actions().any(|c| c == Column(7)));
 
         assert!(!game.step(&Column(8)));
         assert!(!game.step(&Column(8)));
@@ -438,7 +438,7 @@ mod tests {
         assert!(!game.step(&Column(8)));
         assert!(!game.step(&Column(8)));
         assert!(!game.step(&Column(8)));
-        assert!(game.iter_actions().position(|c| c == Column(8)).is_some());
+        assert!(game.iter_actions().any(|c| c == Column(8)));
         assert!(game.step(&Column(8)));
         assert!(game.is_over());
         assert_eq!(game.winner(), None);
@@ -450,7 +450,7 @@ mod tests {
     fn test_horz_wins() {
         for row in 0..HEIGHT {
             let mut bb =
-                (1 << (row + 0)) | (1 << (row + 7)) | (1 << (row + 14)) | (1 << (row + 21));
+                (1 << row) | (1 << (row + 7)) | (1 << (row + 14)) | (1 << (row + 21));
             for _i in 0..6 {
                 assert!(won(bb));
                 bb <<= 7;
@@ -461,7 +461,7 @@ mod tests {
     #[test]
     fn test_vert_wins() {
         for col in 0..WIDTH {
-            let mut bb = (1 << (7 * col + 0))
+            let mut bb = (1 << 7 * col)
                 | (1 << (7 * col + 1))
                 | (1 << (7 * col + 2))
                 | (1 << (7 * col + 3));
@@ -486,7 +486,7 @@ mod tests {
     #[test]
     fn test_d2_wins() {
         for col in 0..6 {
-            let mut bb = (1 << (7 * col + 0))
+            let mut bb = (1 << 7 * col)
                 | (1 << (7 * (col + 1) + 1))
                 | (1 << (7 * (col + 2) + 2))
                 | (1 << (7 * (col + 3) + 3));

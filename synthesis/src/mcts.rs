@@ -7,9 +7,9 @@ use rand_distr::Dirichlet;
 type NodeId = u32;
 type ActionId = u8;
 
-impl Into<usize> for Outcome {
-    fn into(self) -> usize {
-        match self {
+impl From<Outcome> for usize {
+    fn from(val: Outcome) -> Self {
+        match val {
             Outcome::Lose(_) => 0,
             Outcome::Draw(_) => 1,
             Outcome::Win(_) => 2,
@@ -17,10 +17,10 @@ impl Into<usize> for Outcome {
     }
 }
 
-impl Into<[f32; 3]> for Outcome {
-    fn into(self) -> [f32; 3] {
+impl From<Outcome> for [f32; 3] {
+    fn from(val: Outcome) -> Self {
         let mut dist = [0.0; 3];
-        dist[Into::<usize>::into(self)] = 1.0;
+        dist[Into::<usize>::into(val)] = 1.0;
         dist
     }
 }
@@ -73,12 +73,12 @@ impl<G: Game<N>, const N: usize> Node<G, N> {
     }
 
     #[inline]
-    fn is_visited(&self) -> bool {
+    fn _is_visited(&self) -> bool {
         self.num_children != 0
     }
 
     #[inline]
-    fn is_unsolved(&self) -> bool {
+    fn _is_unsolved(&self) -> bool {
         self.solution.is_none()
     }
 
@@ -99,6 +99,7 @@ impl<G: Game<N>, const N: usize> Node<G, N> {
     }
 }
 
+#[allow(clippy::upper_case_acronyms)]
 pub struct MCTS<'a, G: Game<N>, P: Policy<G, N>, const N: usize> {
     root: NodeId,
     offset: NodeId,
@@ -205,8 +206,8 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
             }
         }
         // assert!(total > 0.0, "{:?} {:?}", root.solution, root.num_visits);
-        for i in 0..N {
-            search_policy[i] /= total;
+        for spi in search_policy.iter_mut().take(N) {
+            *spi /= total;
         }
     }
 
@@ -216,8 +217,8 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
             Some(outcome) => outcome.into(),
             None => {
                 let mut outcome_probs = [0.0; 3];
-                for i in 0..3 {
-                    outcome_probs[i] = root.outcome_probs[i] / root.num_visits;
+                for (i, op_i) in outcome_probs.iter_mut().enumerate() {
+                    *op_i = root.outcome_probs[i] / root.num_visits;
                 }
                 outcome_probs
             }
@@ -402,7 +403,7 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
         let last_child = node.last_child();
 
         if self.cfg.auto_extend && num_children == 1 {
-            return self.visit(first_child);
+            self.visit(first_child)
         } else {
             let (logits, outcome_probs) = self.policy.eval(&game);
 
@@ -448,41 +449,42 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
                     // at least 1 is a win, so mark this node as a win
                     node.mark_solved(Outcome::Win(in_turns));
                     if correct_values {
-                        for i in 0..3 {
-                            outcome_probs[i] = -node.outcome_probs[i];
+                        for (i, op_i) in outcome_probs.iter_mut().enumerate() {
+                            *op_i = -node.outcome_probs[i];
                         }
                         outcome_probs[2] += node.num_visits + 1.0;
                     }
-                } else if best_solution.is_some() && all_solved {
+                } else if all_solved {
                     // all children node's are proven losses or draws
-                    let best_outcome = best_solution.unwrap();
-                    node.mark_solved(best_outcome);
-                    if correct_values {
-                        for i in 0..3 {
-                            outcome_probs[i] = -node.outcome_probs[i];
-                        }
-                        if let Outcome::Draw(_) = best_outcome {
-                            outcome_probs[1] += node.num_visits + 1.0;
-                        } else {
-                            outcome_probs[0] += node.num_visits + 1.0;
+                    if let Some(best_outcome) = best_solution {
+
+                        node.mark_solved(best_outcome);
+                        if correct_values {
+                            for (i, op_i) in outcome_probs.iter_mut().enumerate() {
+                                *op_i = -node.outcome_probs[i];
+                            }
+                            if let Outcome::Draw(_) = best_outcome {
+                                outcome_probs[1] += node.num_visits + 1.0;
+                            } else {
+                                outcome_probs[0] += node.num_visits + 1.0;
+                            }
                         }
                     }
+
                 } else {
                     solved = false;
                 }
             }
 
             let node = self.mut_node(node_id);
-            for i in 0..3 {
-                node.outcome_probs[i] += outcome_probs[i];
+            for (i, &op_i) in outcome_probs.iter().enumerate() {
+                node.outcome_probs[i] += op_i;
             }
             node.num_visits += 1.0;
             if node_id == self.root {
                 break;
             }
-            let t = outcome_probs[0];
-            outcome_probs[0] = outcome_probs[2];
-            outcome_probs[2] = t;
+            outcome_probs.swap(0, 2);
             node_id = parent;
         }
     }
@@ -529,9 +531,9 @@ mod tests {
         }
     }
 
-    impl Into<usize> for Action {
-        fn into(self) -> usize {
-            self.row * 3 + self.col
+    impl From<Action> for usize {
+        fn from(val: Action) -> Self {
+            val.row * 3 + val.col
         }
     }
 
@@ -847,7 +849,7 @@ mod tests {
                 root_policy_noise: PolicyNoise::None,
             },
             &mut policy,
-            game.clone(),
+            game,
         );
         let mut rng2 = StdRng::seed_from_u64(0);
 

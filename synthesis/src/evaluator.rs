@@ -3,7 +3,7 @@ use crate::game::*;
 use crate::mcts::MCTS;
 use crate::policies::*;
 use crate::utils::*;
-use rand::prelude::{Rng, SeedableRng, StdRng};
+use rand::prelude::{SeedableRng, StdRng};
 use tch::nn::VarStore;
 
 pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
@@ -33,7 +33,7 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
                     &format!("VanillaMCTS{}", cfg.rollout_num_explores[i]),
                     &format!("VanillaMCTS{}", cfg.rollout_num_explores[j]),
                     mcts_vs_mcts::<G, N>(
-                        &cfg,
+                        cfg,
                         first_player,
                         cfg.rollout_num_explores[i],
                         cfg.rollout_num_explores[j],
@@ -46,7 +46,7 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
         }
 
         // wait for model to exist;
-        let name = format!("model_{}.ot", i_iter);
+        let name = format!("model_{i_iter}.ot");
         while !models_dir.join(&name).exists() {
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
@@ -61,10 +61,10 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
 
         // evaluate against rollout mcts
         for &explores in cfg.rollout_num_explores.iter() {
-            let op_name = format!("VanillaMCTS{}", explores);
+            let op_name = format!("VanillaMCTS{explores}");
             for seed in 0..cfg.num_games_against_rollout {
                 let result = eval_against_rollout_mcts(
-                    &cfg,
+                    cfg,
                     &mut policy,
                     first_player,
                     explores,
@@ -72,7 +72,7 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
                 );
                 add_pgn_result(&mut pgn, &name, &op_name, result)?;
                 let result = eval_against_rollout_mcts(
-                    &cfg,
+                    cfg,
                     &mut policy,
                     first_player.next(),
                     explores,
@@ -86,11 +86,11 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
 
         // evaluate against best old policies
         for (prev_name, prev_p) in best_k.iter_mut() {
-            let result = eval_against_old(&cfg, &mut policy, prev_p);
-            add_pgn_result(&mut pgn, &name, &prev_name, result)?;
+            let result = eval_against_old(cfg, &mut policy, prev_p);
+            add_pgn_result(&mut pgn, &name, prev_name, result)?;
 
-            let result = eval_against_old(&cfg, prev_p, &mut policy);
-            add_pgn_result(&mut pgn, &prev_name, &name, result)?;
+            let result = eval_against_old(cfg, prev_p, &mut policy);
+            add_pgn_result(&mut pgn, prev_name, &name, result)?;
         }
 
         // update results
@@ -105,16 +105,13 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
             if ranks
                 .iter()
                 .take(cfg.num_best_policies)
-                .position(|n| n == &name)
-                .is_some()
+                .any(|n| n == &name)
             {
                 best_k.push((name, policy));
                 match best_k.iter().position(|(n, _p)| {
-                    ranks
+                    !ranks
                         .iter()
-                        .take(cfg.num_best_policies)
-                        .position(|n1| n1 == n)
-                        .is_none()
+                        .take(cfg.num_best_policies).any(|n1| n1 == n)
                 }) {
                     Some(i) => {
                         best_k.remove(i);

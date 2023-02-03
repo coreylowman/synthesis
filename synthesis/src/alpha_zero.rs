@@ -46,7 +46,7 @@ pub fn alpha_zero<G: 'static + Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const 
         // gather data
         {
             let _guard = tch::no_grad_guard();
-            gather_experience::<G, P, N>(cfg, format!("model_{}.ot", i_iter), &mut buffer, i_iter);
+            gather_experience::<G, P, N>(cfg, format!("model_{i_iter}.ot"), &mut buffer, i_iter);
         }
 
         // convert buffer data to tensors
@@ -66,7 +66,7 @@ pub fn alpha_zero<G: 'static + Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const 
             .unwrap()
             .1;
         opt.set_lr(lr);
-        println!("Using lr={}", lr);
+        println!("Using lr={lr}");
 
         // train
         for _i_epoch in 0..cfg.num_epochs {
@@ -90,7 +90,7 @@ pub fn alpha_zero<G: 'static + Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const 
             }
             epoch_loss[0] *= (cfg.batch_size as f32) / (dims[0] as f32);
             epoch_loss[1] *= (cfg.batch_size as f32) / (dims[0] as f32);
-            println!("{} {:?}", _i_epoch, epoch_loss);
+            println!("{_i_epoch} {epoch_loss:?}");
         }
 
         // save latest weights
@@ -251,7 +251,7 @@ fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
         state_infos.push(StateInfo::q(num_turns + 1, mcts.target_q()));
 
         // pick action
-        let action = sample_action(&cfg, &mut mcts, &game, &search_policy, rng, num_turns);
+        let action = sample_action(cfg, &mut mcts, &game, &search_policy, rng, num_turns);
         solution = mcts.solution(&action);
 
         let is_over = game.step(&action);
@@ -264,7 +264,7 @@ fn run_game<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
     }
 
     fill_state_info(&mut state_infos, solution.unwrap().reversed());
-    store_rewards(&cfg, buffer, &state_infos);
+    store_rewards(cfg, buffer, &state_infos);
 }
 
 fn sample_action<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
@@ -277,7 +277,8 @@ fn sample_action<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
 ) -> G::Action {
     let best = mcts.best_action(cfg.action);
     let solution = mcts.solution(&best);
-    let action = if num_turns < cfg.random_actions_until {
+    
+    if num_turns < cfg.random_actions_until {
         let n = rng.gen_range(0..game.iter_actions().count() as u8) as usize;
         game.iter_actions().nth(n).unwrap()
     } else if num_turns < cfg.sample_actions_until
@@ -289,8 +290,7 @@ fn sample_action<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
         G::Action::from(choice)
     } else {
         best
-    };
-    action
+    }
 }
 
 fn fill_state_info(state_infos: &mut Vec<StateInfo>, mut outcome: Outcome) {
@@ -320,16 +320,16 @@ fn store_rewards<G: Game<N>, const N: usize>(
             ValueTarget::Z => state.z,
             ValueTarget::QZaverage { p } => {
                 let mut value = [0.0; 3];
-                for i in 0..3 {
-                    value[i] = state.q[i] * p + state.z[i] * (1.0 - p);
+                for (i, v_i) in value.iter_mut().enumerate() {
+                    *v_i = state.q[i] * p + state.z[i] * (1.0 - p);
                 }
                 value
             }
             ValueTarget::QtoZ { from, to } => {
                 let p = (1.0 - state.t) * from + state.t * to;
                 let mut value = [0.0; 3];
-                for i in 0..3 {
-                    value[i] = state.q[i] * (1.0 - p) + state.z[i] * p;
+                for (i, v_i) in value.iter_mut().enumerate() {
+                    *v_i = state.q[i] * (1.0 - p) + state.z[i] * p;
                 }
                 value
             }

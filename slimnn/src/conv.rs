@@ -51,18 +51,18 @@ impl<
         assert_eq!(H_OUT, ((H_IN + 2 * ROW_PADDING - KERNEL_SIZE) / STRIDE) + 1);
 
         let mut y = [[[0.0; W_OUT]; H_OUT]; NUM_CHAN_OUT];
-        for i_cout in 0..NUM_CHAN_OUT {
-            for i_out_row in 0..H_OUT {
-                for i_out_col in 0..W_OUT {
-                    y[i_cout][i_out_row][i_out_col] = self.bias[i_cout];
+            for (i_cout, y_cout) in y.iter_mut().enumerate().take(NUM_CHAN_OUT) {
+            for y_cout_row in y_cout.iter_mut().take(H_OUT) {
+                for y_cout_row_col in y_cout_row.iter_mut().take(W_OUT) {
+                    *y_cout_row_col = self.bias[i_cout];
                 }
             }
         }
 
-        for i_cout in 0..NUM_CHAN_OUT {
-            for i_cin in 0..NUM_CHAN_IN {
-                for i_out_row in 0..H_OUT {
-                    for i_out_col in 0..W_OUT {
+        for (i_cout, y_cout) in y.iter_mut().enumerate().take(NUM_CHAN_OUT) {
+            for (i_cin, x_cin) in x.iter().enumerate().take(NUM_CHAN_IN) {
+                for (i_out_row, y_cout_row) in y_cout.iter_mut().enumerate().take(H_OUT) {
+                    for (i_out_col, y_cout_row_col) in y_cout_row.iter_mut().enumerate().take(W_OUT) {
                         for i_k1 in 0..KERNEL_SIZE {
                             let i_in_row = i_out_row * STRIDE + i_k1;
                             if ROW_PADDING <= i_in_row && i_in_row < H_IN + ROW_PADDING {
@@ -70,9 +70,9 @@ impl<
                                     let i_in_col = i_out_col * STRIDE + i_k2;
                                     if COL_PADDING <= i_in_col && i_in_col < W_IN + COL_PADDING {
                                         let w = self.weight[i_cout][i_cin][i_k1][i_k2];
-                                        let v = x[i_cin][i_in_row - ROW_PADDING]
+                                        let v = x_cin[i_in_row - ROW_PADDING]
                                             [i_in_col - COL_PADDING];
-                                        y[i_cout][i_out_row][i_out_col] += w * v;
+                                        *y_cout_row_col += w * v;
                                     }
                                 }
                             }
