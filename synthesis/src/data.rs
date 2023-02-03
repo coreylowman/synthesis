@@ -49,9 +49,7 @@ impl<'a> Iterator for BatchRandSampler<'a> {
             return None;
         }
 
-        let batch_inds = self
-            .inds
-            .narrow(0, self.index, next_index - self.index);
+        let batch_inds = self.inds.narrow(0, self.index, next_index - self.index);
         self.index = next_index;
 
         let item = (

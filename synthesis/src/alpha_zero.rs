@@ -277,7 +277,7 @@ fn sample_action<G: Game<N>, P: Policy<G, N>, R: Rng, const N: usize>(
 ) -> G::Action {
     let best = mcts.best_action(cfg.action);
     let solution = mcts.solution(&best);
-    
+
     if num_turns < cfg.random_actions_until {
         let n = rng.gen_range(0..game.iter_actions().count() as u8) as usize;
         game.iter_actions().nth(n).unwrap()

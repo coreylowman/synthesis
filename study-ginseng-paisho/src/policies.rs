@@ -1,8 +1,8 @@
-use tch::nn::VarStore;
-use tch::Tensor;
-use synthesis::prelude::{NNPolicy, Policy};
 use crate::ginseng::Ginseng;
 use synthesis::game::Game;
+use synthesis::prelude::{NNPolicy, Policy};
+use tch::nn::VarStore;
+use tch::Tensor;
 
 pub struct GinsengNet;
 
@@ -12,7 +12,7 @@ impl Policy<Ginseng, { Ginseng::MAX_NUM_ACTIONS }> for GinsengNet {
     }
 }
 
-impl NNPolicy<Ginseng, {Ginseng::MAX_NUM_ACTIONS}> for GinsengNet {
+impl NNPolicy<Ginseng, { Ginseng::MAX_NUM_ACTIONS }> for GinsengNet {
     fn new(vs: &VarStore) -> Self {
         todo!()
     }

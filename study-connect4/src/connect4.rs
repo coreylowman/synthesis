@@ -449,8 +449,7 @@ mod tests {
     #[test]
     fn test_horz_wins() {
         for row in 0..HEIGHT {
-            let mut bb =
-                (1 << row) | (1 << (row + 7)) | (1 << (row + 14)) | (1 << (row + 21));
+            let mut bb = (1 << row) | (1 << (row + 7)) | (1 << (row + 14)) | (1 << (row + 21));
             for _i in 0..6 {
                 assert!(won(bb));
                 bb <<= 7;
@@ -461,10 +460,8 @@ mod tests {
     #[test]
     fn test_vert_wins() {
         for col in 0..WIDTH {
-            let mut bb = (1 << 7 * col)
-                | (1 << (7 * col + 1))
-                | (1 << (7 * col + 2))
-                | (1 << (7 * col + 3));
+            let mut bb =
+                (1 << 7 * col) | (1 << (7 * col + 1)) | (1 << (7 * col + 2)) | (1 << (7 * col + 3));
             for _i in 0..4 {
                 assert!(won(bb));
                 bb <<= 1;

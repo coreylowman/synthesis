@@ -17,11 +17,15 @@ pub fn git_hash() -> std::io::Result<String> {
     Command::new("git")
         .arg("rev-parse")
         .arg("HEAD")
-        .output().map(|output| String::from_utf8(output.stdout).expect("Command didn't produce valid utf-8"))
+        .output()
+        .map(|output| String::from_utf8(output.stdout).expect("Command didn't produce valid utf-8"))
 }
 
 pub fn git_diff() -> std::io::Result<String> {
-    Command::new("git").arg("diff").output().map(|output| String::from_utf8(output.stdout).expect("Command didn't produce valid utf-8"))
+    Command::new("git")
+        .arg("diff")
+        .output()
+        .map(|output| String::from_utf8(output.stdout).expect("Command didn't produce valid utf-8"))
 }
 
 pub fn add_pgn_result(
@@ -81,10 +85,10 @@ pub fn rankings(dir: &Path) -> std::io::Result<Vec<String>> {
     let mut names = Vec::new();
     for line in reader.lines().skip(1) {
         let l = String::from(line?.trim());
-                if let Some(start_i) = l.find("model_") {
-                    let end_i = l.find(".ot").unwrap();
-                    names.push(String::from(l[start_i..end_i + 3].trim()));
-                }
+        if let Some(start_i) = l.find("model_") {
+            let end_i = l.find(".ot").unwrap();
+            names.push(String::from(l[start_i..end_i + 3].trim()));
+        }
     }
     Ok(names)
 }

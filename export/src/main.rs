@@ -1,9 +1,7 @@
-
 use std::collections::HashMap;
 use std::env;
 use std::io::Write;
 use std::path::Path;
-
 
 pub fn f32_to_bf16(value: f32) -> u16 {
     // Convert to raw bytes
@@ -28,10 +26,7 @@ fn serialize_tensor(t: &tch::Tensor) -> String {
     let f32s: Vec<f32> = t.into();
     let u8s: Vec<u8> = f32s
         .iter()
-        .flat_map(|f| {
-            f32_to_bf16(*f)
-                .to_be_bytes().to_vec()
-        })
+        .flat_map(|f| f32_to_bf16(*f).to_be_bytes().to_vec())
         .collect();
     base65536::encode(&u8s)
 }

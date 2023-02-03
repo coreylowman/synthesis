@@ -102,17 +102,12 @@ pub fn evaluator<G: Game<N>, P: Policy<G, N> + NNPolicy<G, N>, const N: usize>(
             best_k.push((name, policy));
         } else {
             let ranks = rankings(&cfg.logs)?;
-            if ranks
-                .iter()
-                .take(cfg.num_best_policies)
-                .any(|n| n == &name)
-            {
+            if ranks.iter().take(cfg.num_best_policies).any(|n| n == &name) {
                 best_k.push((name, policy));
-                match best_k.iter().position(|(n, _p)| {
-                    !ranks
-                        .iter()
-                        .take(cfg.num_best_policies).any(|n1| n1 == n)
-                }) {
+                match best_k
+                    .iter()
+                    .position(|(n, _p)| !ranks.iter().take(cfg.num_best_policies).any(|n1| n1 == n))
+                {
                     Some(i) => {
                         best_k.remove(i);
                     }

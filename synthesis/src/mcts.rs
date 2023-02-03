@@ -457,7 +457,6 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
                 } else if all_solved {
                     // all children node's are proven losses or draws
                     if let Some(best_outcome) = best_solution {
-
                         node.mark_solved(best_outcome);
                         if correct_values {
                             for (i, op_i) in outcome_probs.iter_mut().enumerate() {
@@ -470,7 +469,6 @@ impl<'a, G: Game<N>, P: Policy<G, N>, const N: usize> MCTS<'a, G, P, N> {
                             }
                         }
                     }
-
                 } else {
                     solved = false;
                 }

@@ -4,7 +4,7 @@ pub const NUM_MAX_TURNS: usize = 256;
 const MAX_NUM_POSSIBLE_MOVES: usize = 128; // TODO: Calculate this!
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
-pub struct Ginseng{
+pub struct Ginseng {
     board: [i8; NUM_PLAYABLE_SQUARES],
     player: PlayerID,
 }
@@ -50,10 +50,9 @@ impl HasTurnOrder for PlayerID {
     #[inline]
     fn prev(&self) -> Self {
         match self {
-            PlayerID::Host => {PlayerID::Guest}
-            PlayerID::Guest => {PlayerID::Host}
+            PlayerID::Host => PlayerID::Guest,
+            PlayerID::Guest => PlayerID::Host,
         }
-
     }
 
     #[inline]
