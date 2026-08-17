@@ -1,3 +1,5 @@
+
+
 # Synthesis: A Rust implementation of AlphaZero
 
 This repo is a cargo workspace made up of multiple crates & binaries:
@@ -8,7 +10,9 @@ This repo is a cargo workspace made up of multiple crates & binaries:
 - `slimnn`: A small neural network crate in pure rust
 - `export`: A binary crate that saves pytorch weights into a format slimnn can understand
 
-```cargo run --release --bin study-connect4```
+```
+cargo run --release --bin study-connect4
+```
 
 ## What's implemented
 
